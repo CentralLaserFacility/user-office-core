@@ -25,7 +25,7 @@ services:
       - '8080:8080' # The Web UI (enabled by --api)
     volumes:
         - /var/run/docker.sock:/var/run/docker.sock:ro
-        - ./letsencrypt:/letsencrypt # For certificate storage
+        - ./letsencrypt/acme.json:/letsencrypt/acme.json # For certificate storage
     labels:
         - 'traefik.enable=true'
         - 'traefik.http.routers.traefik.rule=Host(`172.16.101.230`)'
