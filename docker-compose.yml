@@ -78,7 +78,7 @@ services:
       BASE_URL: localhost:33000
       NODE_ENV: development
       USER_OFFICE_FACTORY_ENDPOINT: http://factory:4500/generate
-      AUTH_DISCOVERY_URL: http://host.docker.internal:5001/.well-known/openid-configuration
+      AUTH_DISCOVERY_URL: http://172.16.101.230:5001/.well-known/openid-configuration
       AUTH_CLIENT_ID: useroffice
       AUTH_CLIENT_SECRET: useroffice
       TZ: Europe/Stockholm
