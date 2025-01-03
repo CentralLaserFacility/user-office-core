@@ -88,7 +88,7 @@ services:
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.services.backend.loadbalancer.server.port=4000'
-      - 'traefik.http.routers.backend.rule=(Host(`localhost`) && PathPrefix(`/api`, `/preview`, `/downloads`, `/files`, `/download`, `/uploads`, `/graphql`))'
+      - 'traefik.http.routers.backend.rule=(Host(`172.16.101.230`) && PathPrefix(`/api`, `/preview`, `/downloads`, `/files`, `/download`, `/uploads`, `/graphql`))'
     depends_on:
       - duo-development-authorization-server
       - db
