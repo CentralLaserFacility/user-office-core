@@ -102,5 +102,10 @@ services:
     environment:
       DATABASE_URL: postgres://duouser:duopassword@db:5432/duo
       PORT: 5001
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`172.16.101.230`) && PathPrefix(`/interaction`)"
+      - "traefik.http.routers.auth.entrypoints=web"
+      - "traefik.http.services.auth.loadbalancer.server.port=5001"
     depends_on:
       - db
