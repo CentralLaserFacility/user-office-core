@@ -2,7 +2,8 @@ export class Role {
   constructor(
     public id: number,
     public shortCode: string,
-    public title: string
+    public title: string,
+    public description: string
   ) {}
 }
 
@@ -13,6 +14,6 @@ export enum Roles {
   FAP_SECRETARY = 'fap_secretary',
   FAP_REVIEWER = 'fap_reviewer',
   INSTRUMENT_SCIENTIST = 'instrument_scientist',
-  SAMPLE_SAFETY_REVIEWER = 'sample_safety_reviewer',
+  EXPERIMENT_SAFETY_REVIEWER = 'experiment_safety_reviewer',
   INTERNAL_REVIEWER = 'internal_reviewer',
 }

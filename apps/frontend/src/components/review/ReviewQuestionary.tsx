@@ -14,6 +14,7 @@ import {
   QuestionaryStep,
   ReviewStatus,
   TemplateGroupId,
+  WorkflowType,
 } from 'generated/sdk';
 import createCustomEventHandlers from 'models/questionary/createCustomEventHandlers';
 import { FapReviewSubmissionState } from 'models/questionary/fapReview/FapReviewSubmissionState';
@@ -70,9 +71,11 @@ export function createFapReviewStub(
         description: '',
         name: '',
         isDefault: true,
+        entityType: WorkflowType.PROPOSAL,
       },
       submitted: false,
       users: [],
+      coProposerInvites: [],
       samples: [],
       genericTemplates: [],
       commentForManagement: '',
@@ -85,7 +88,6 @@ export function createFapReviewStub(
       managementDecisionSubmitted: false,
       call: null,
       notified: false,
-      proposalBookingsCore: null,
       publicStatus: ProposalPublicStatus.ACCEPTED,
       reviews: [],
       proposerId: 0,
@@ -95,6 +97,8 @@ export function createFapReviewStub(
       updated: new Date(),
       submittedDate: new Date(),
       techniques: [],
+      attachments: { questions: [] },
+      experiments: null,
     },
   };
 }

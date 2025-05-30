@@ -1,46 +1,299 @@
 import MaterialTable from '@material-table/core';
+import CheckIcon from '@mui/icons-material/Check';
+import ClearIcon from '@mui/icons-material/Clear';
+import EditIcon from '@mui/icons-material/Edit';
+import MailIcon from '@mui/icons-material/Mail';
+import ReplayIcon from '@mui/icons-material/Replay';
+import { IconButton, styled, Tooltip } from '@mui/material';
 import Box from '@mui/material/Box';
-import React from 'react';
+import React, { useContext, useState } from 'react';
+import { Link } from 'react-router-dom';
 
-import { GetScheduledEventsCoreQuery, TrainingStatus } from 'generated/sdk';
+import CreateUpdateCancelVisitRegistration from 'components/visit/CreateUpdateCancelVisitRegistration';
+import VisitStatusIcon from 'components/visit/VisitStatusIcon';
+import { SettingsContext } from 'context/SettingsContextProvider';
+import {
+  SettingsId,
+  VisitRegistrationStatus,
+  GetExperimentsQuery,
+} from 'generated/sdk';
 import { useFormattedDateTime } from 'hooks/admin/useFormattedDateTime';
+import { useDataApi } from 'hooks/common/useDataApi';
 import { tableIcons } from 'utils/materialIcons';
 import { getFullUserName } from 'utils/user';
+import withConfirm, { WithConfirmProps } from 'utils/withConfirm';
 
 type RowType = NonNullable<
-  GetScheduledEventsCoreQuery['scheduledEventsCore'][0]['visit']
+  GetExperimentsQuery['experiments'][0]['visit']
 >['registrations'][0];
 
-type ScheduledEvent = GetScheduledEventsCoreQuery['scheduledEventsCore'][0];
+type Experiment = GetExperimentsQuery['experiments'][0];
 
-interface ScheduledEventDetailsTableProps {
-  scheduledEvent: ScheduledEvent;
+interface ExperimentDetailsTableProps extends WithConfirmProps {
+  experiment: Experiment;
 }
 
-function ExperimentVisitsTable({
-  scheduledEvent,
-}: ScheduledEventDetailsTableProps) {
+const VisitorName = styled(Link)(({ theme }) => ({
+  color: theme.palette.primary.main,
+}));
+
+const ActionDiv = styled('div')({
+  display: 'flex',
+});
+
+function ExperimentVisitsTable(params: ExperimentDetailsTableProps) {
+  const { confirm } = params;
+  const [experiment, setExperiment] = useState(params.experiment);
+  const { settingsMap } = useContext(SettingsContext);
+  const organisationName = settingsMap
+    .get(SettingsId.ORGANISATION_NAME)
+    ?.settingsValue?.valueOf();
+  const [selectedVisit, setSelectedVisit] = useState<RowType | null>(null);
+
+  const api = useDataApi();
   const { toFormattedDateTime } = useFormattedDateTime({
     shouldUseTimeZone: true,
   });
 
-  const getHumanReadableStatus = (rowData: RowType) => {
-    switch (rowData.trainingStatus) {
-      case TrainingStatus.ACTIVE:
-        return `Valid until ${toFormattedDateTime(rowData.trainingExpiryDate)}`;
-      case TrainingStatus.EXPIRED:
-        return `Expired ${toFormattedDateTime(rowData.trainingExpiryDate)}`;
-      case TrainingStatus.NONE:
-        return 'Not started';
-      default:
-        return 'Unknown';
-    }
+  const onVisitRegistrationSubmitted = (submittedRegistration: RowType) => {
+    setExperiment((prev) => {
+      if (!prev.visit) {
+        return prev;
+      }
+
+      const next = {
+        ...prev,
+        visit: {
+          ...prev.visit,
+          registrations: prev.visit.registrations.map((registration) =>
+            registration.userId === submittedRegistration.userId
+              ? submittedRegistration
+              : registration
+          ),
+        },
+      };
+
+      return next;
+    });
+  };
+
+  const replaceVisitRegistration = (
+    newRegistration: NonNullable<Experiment['visit']>['registrations'][0]
+  ): void => {
+    setExperiment((prev) => {
+      if (!prev.visit) {
+        return prev;
+      }
+
+      const next = {
+        ...prev,
+        visit: {
+          ...prev.visit,
+          registrations: prev.visit.registrations.map((registration) =>
+            registration.userId === newRegistration.userId
+              ? newRegistration
+              : registration
+          ),
+        },
+      };
+
+      return next;
+    });
+  };
+
+  const cancelVisit = async (visitId: number, userId: number) => {
+    const cancelledRegistration = (
+      await api().cancelVisitRegistration({
+        visitRegistration: {
+          visitId,
+          userId,
+        },
+      })
+    ).cancelVisitRegistration;
+
+    replaceVisitRegistration(cancelledRegistration);
+  };
+
+  const approveVisit = async (visitId: number, userId: number) => {
+    const approvedRegistration = (
+      await api().approveVisitRegistration({
+        visitRegistration: {
+          visitId,
+          userId,
+        },
+      })
+    ).approveVisitRegistration;
+
+    replaceVisitRegistration(approvedRegistration);
+  };
+
+  const requestVisitChanges = async (visitId: number, userId: number) => {
+    const updatedRegistration = (
+      await api().requestVisitRegistrationChanges({
+        visitRegistration: {
+          visitId,
+          userId,
+        },
+      })
+    ).requestVisitRegistrationChanges;
+    replaceVisitRegistration(updatedRegistration);
+  };
+
+  const onApproveVisitClick = async (visitId: number, userId: number) => {
+    confirm(async () => approveVisit(visitId, userId), {
+      title: 'Approve visit registration',
+      description: 'Are you sure you want to approve this visit registration?',
+    })();
+  };
+
+  const onCancelVisitClick = async (visitId: number, userId: number) => {
+    confirm(async () => cancelVisit(visitId, userId), {
+      title: 'Cancel visit registration',
+      description: 'Are you sure you want to cancel this visit registration?',
+    })();
+  };
+
+  const onRequestChangesClick = async (visitId: number, userId: number) => {
+    confirm(async () => requestVisitChanges(visitId, userId), {
+      title: 'Request visit registration changes',
+      description:
+        'Are you sure you want to request visit registration changes?',
+    })();
   };
 
   const columns = [
     {
+      title: 'Actions',
+      sorting: false,
+      render: (rowData: RowType) => {
+        const editButton = (
+          <IconButton onClick={() => setSelectedVisit(rowData)}>
+            <EditIcon />
+          </IconButton>
+        );
+
+        const approveButton = (
+          <IconButton
+            onClick={() => onApproveVisitClick(rowData.visitId, rowData.userId)}
+            component="button"
+            data-cy="approve-visit-registration-button"
+          >
+            <Tooltip title="Approve visit registration">
+              <CheckIcon />
+            </Tooltip>
+          </IconButton>
+        );
+
+        const cancelButton = (
+          <IconButton
+            onClick={() => onCancelVisitClick(rowData.visitId, rowData.userId)}
+            component="button"
+            data-cy="cancel-visit-registration-button"
+          >
+            <Tooltip title="Cancel visit registration">
+              <ClearIcon />
+            </Tooltip>
+          </IconButton>
+        );
+
+        const requestChangesButton = (
+          <IconButton
+            onClick={() =>
+              onRequestChangesClick(rowData.visitId, rowData.userId)
+            }
+            component="button"
+            data-cy="request-visit-registration-changes-button"
+          >
+            <Tooltip title="Request visit registration changes">
+              <ReplayIcon />
+            </Tooltip>
+          </IconButton>
+        );
+
+        const subject = organisationName
+          ? `Important information regarding your experiment at ${organisationName}`
+          : 'Important information regarding your experiment';
+        const sendEmailButton = (
+          <IconButton
+            component="a"
+            href={`
+              mailto:${rowData.user?.email || ''}?subject=${subject}&body=Dear ${getFullUserName(rowData.user)},%0D%0A%0D%0AWe are writing regarding your proposal "${
+                params.experiment.proposal.title
+              }" with proposal ID ${
+                params.experiment.proposal.proposalId
+              }.%0D%0A%0D%0A.%0D%0A%0D%0AKind regards`}
+            data-cy="send-email-button"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <MailIcon />
+          </IconButton>
+        );
+
+        switch (rowData.status) {
+          case VisitRegistrationStatus.DRAFTED:
+            return (
+              <ActionDiv>
+                {sendEmailButton}
+                {cancelButton}
+                {editButton}
+              </ActionDiv>
+            );
+          case VisitRegistrationStatus.SUBMITTED:
+            return (
+              <ActionDiv>
+                {sendEmailButton}
+                {editButton}
+                {approveButton}
+                {cancelButton}
+                {requestChangesButton}
+              </ActionDiv>
+            );
+          case VisitRegistrationStatus.APPROVED:
+            return (
+              <ActionDiv>
+                {sendEmailButton}
+                {cancelButton}
+              </ActionDiv>
+            );
+
+          case VisitRegistrationStatus.CHANGE_REQUESTED:
+            return (
+              <ActionDiv>
+                {sendEmailButton}
+                {editButton}
+                {approveButton}
+                {cancelButton}
+              </ActionDiv>
+            );
+          case VisitRegistrationStatus.CANCELLED_BY_USER:
+            return <ActionDiv>{sendEmailButton}</ActionDiv>;
+          case VisitRegistrationStatus.CANCELLED_BY_FACILITY:
+            return <ActionDiv>{sendEmailButton}</ActionDiv>;
+          default:
+            return null;
+        }
+      },
+    },
+    {
+      title: 'Status',
+      render: (rowData: RowType) => {
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <VisitStatusIcon status={rowData.status} />
+            <span data-cy="visit-status">{rowData.status}</span>
+          </Box>
+        );
+      },
+      field: 'status',
+    },
+    {
       title: 'Visitor name',
-      render: (rowData: RowType) => getFullUserName(rowData.user),
+      render: (rowData: RowType) => (
+        <VisitorName to={`/People/${rowData.userId}`}>
+          {getFullUserName(rowData.user)}
+        </VisitorName>
+      ),
       customSort: (a: RowType, b: RowType) => {
         return getFullUserName(a.user).localeCompare(getFullUserName(b.user));
       },
@@ -48,21 +301,21 @@ function ExperimentVisitsTable({
     {
       title: 'Teamleader',
       render: (rowData: RowType) =>
-        rowData.userId === scheduledEvent.visit?.teamLead.id ? 'Yes' : 'No',
+        rowData.userId === experiment.visit?.teamLead.id ? 'Yes' : 'No',
       customSort: (a: RowType) => {
-        return a.userId === scheduledEvent.visit?.teamLead.id ? 1 : -1;
+        return a.userId === experiment.visit?.teamLead.id ? 1 : -1;
       },
     },
     {
-      title: 'Starts at',
+      title: 'Visit start',
       field: 'rowData.startsAt',
       render: (rowData: RowType) =>
-        rowData.isRegistrationSubmitted
+        rowData.startsAt !== null
           ? toFormattedDateTime(rowData.startsAt)
-          : 'Unfinished',
+          : 'Waiting user input',
       customSort: (a: RowType, b: RowType) => {
-        const aIsUnfinished = !a.isRegistrationSubmitted;
-        const bIsUnfinished = !b.isRegistrationSubmitted;
+        const aIsUnfinished = a.startsAt === null;
+        const bIsUnfinished = b.startsAt === null;
 
         if (aIsUnfinished === bIsUnfinished) {
           if (!aIsUnfinished) {
@@ -76,15 +329,15 @@ function ExperimentVisitsTable({
       },
     },
     {
-      title: 'Ends at',
+      title: 'Visit end',
       field: 'rowData.endsAt',
       render: (rowData: RowType) =>
-        rowData.isRegistrationSubmitted
+        rowData.endsAt !== null
           ? toFormattedDateTime(rowData.endsAt)
-          : 'Unfinished',
+          : 'Waiting user input',
       customSort: (a: RowType, b: RowType) => {
-        const aIsUnfinished = !a.isRegistrationSubmitted;
-        const bIsUnfinished = !b.isRegistrationSubmitted;
+        const aIsUnfinished = a.endsAt === null;
+        const bIsUnfinished = b.endsAt === null;
 
         if (aIsUnfinished === bIsUnfinished) {
           if (!aIsUnfinished) {
@@ -97,17 +350,9 @@ function ExperimentVisitsTable({
         return aIsUnfinished ? (bIsUnfinished ? 0 : 1) : bIsUnfinished ? -1 : 0;
       },
     },
-    {
-      title: 'Training',
-      field: 'rowData.trainingStatus',
-      render: (rowData: RowType) => getHumanReadableStatus(rowData),
-      customSort: (a: RowType, b: RowType) => {
-        return a.trainingExpiryDate?.localeCompare(b.trainingExpiryDate) || 0;
-      },
-    },
   ];
 
-  if (scheduledEvent.visit === null) {
+  if (experiment.visit === null) {
     return (
       <Box sx={{ textAlign: 'center', padding: '20px' }}>
         Visit is not defined
@@ -116,34 +361,42 @@ function ExperimentVisitsTable({
   }
 
   return (
-    <Box
-      sx={{
-        '& tr:last-child td': {
-          border: 'none',
-        },
-        '& .MuiPaper-root': {
-          padding: '0 40px',
-          backgroundColor: '#fafafa',
-        },
-      }}
-      data-cy="visit-registrations-table"
-    >
-      <MaterialTable
-        title=""
-        icons={tableIcons}
-        columns={columns}
-        data={scheduledEvent.visit.registrations}
-        options={{
-          search: false,
-          paging: false,
-          toolbar: false,
-          headerStyle: { backgroundColor: '#fafafa', fontWeight: 'bolder' },
-          pageSize: 20,
-          padding: 'dense',
+    <>
+      <Box
+        sx={{
+          '& tr:last-child td': {
+            border: 'none',
+          },
+          '& .MuiPaper-root': {
+            padding: '0 40px',
+            backgroundColor: '#fafafa',
+          },
         }}
+        data-cy="visit-registrations-table"
+      >
+        <MaterialTable
+          title=""
+          icons={tableIcons}
+          columns={columns}
+          data={experiment.visit.registrations}
+          options={{
+            search: false,
+            paging: false,
+            toolbar: false,
+            headerStyle: { backgroundColor: '#fafafa', fontWeight: 'bolder' },
+            pageSize: 20,
+            padding: 'dense',
+          }}
+        />
+      </Box>
+      <CreateUpdateCancelVisitRegistration
+        registration={selectedVisit}
+        onSubmitted={onVisitRegistrationSubmitted}
+        onClose={() => setSelectedVisit(null)}
+        onCancelled={replaceVisitRegistration}
       />
-    </Box>
+    </>
   );
 }
 
-export default ExperimentVisitsTable;
+export default withConfirm(ExperimentVisitsTable);

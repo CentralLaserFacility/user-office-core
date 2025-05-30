@@ -20,15 +20,17 @@ import { isRejection } from '../../models/Rejection';
 import { TemplateCategoryId } from '../../models/Template';
 import { BasicUserDetails } from './BasicUserDetails';
 import { Call } from './Call';
+import { Experiment } from './Experiment';
 import { Fap } from './Fap';
 import { FapMeetingDecision } from './FapMeetingDecision';
 import { GenericTemplate } from './GenericTemplate';
 import { InstrumentWithManagementTime } from './Instrument';
-import { ProposalBookingsCore, ProposalBookingFilter } from './ProposalBooking';
-import { ProposalStatus } from './ProposalStatus';
+import { Invite } from './Invite';
+import { ProposalAttachments } from './ProposalAttachments';
 import { Questionary } from './Questionary';
 import { Review } from './Review';
 import { Sample } from './Sample';
+import { Status } from './Status';
 import { TechnicalReview } from './TechnicalReview';
 import { Technique } from './Technique';
 import { Visit } from './Visit';
@@ -108,6 +110,19 @@ export class ProposalResolver {
     return isRejection(users) ? [] : users;
   }
 
+  @FieldResolver(() => [Invite])
+  async coProposerInvites(
+    @Root() proposal: Proposal,
+    @Ctx() context: ResolverContext
+  ): Promise<Invite[] | null> {
+    const invites = await context.queries.invite.getCoProposerInvites(
+      context.user,
+      proposal.primaryKey
+    );
+
+    return invites;
+  }
+
   @FieldResolver(() => BasicUserDetails, { nullable: true })
   async proposer(
     @Root() proposal: Proposal,
@@ -119,12 +134,12 @@ export class ProposalResolver {
     );
   }
 
-  @FieldResolver(() => ProposalStatus, { nullable: true })
+  @FieldResolver(() => Status, { nullable: true })
   async status(
     @Root() proposal: Proposal,
     @Ctx() context: ResolverContext
-  ): Promise<ProposalStatus | null> {
-    return await context.queries.proposalSettings.getProposalStatus(
+  ): Promise<Status | null> {
+    return await context.queries.status.getStatus(
       context.user,
       proposal.statusId
     );
@@ -156,7 +171,7 @@ export class ProposalResolver {
     @Root() proposal: Proposal,
     @Ctx() context: ResolverContext
   ): Promise<TechnicalReview[]> {
-    return await context.queries.review.technicalReviewsForProposal(
+    return await context.queries.technicalReview.reviewsForProposal(
       context.user,
       proposal.primaryKey
     );
@@ -262,17 +277,24 @@ export class ProposalResolver {
       proposalPk: proposal.primaryKey,
     });
   }
-  @FieldResolver(() => ProposalBookingsCore, { nullable: true })
-  proposalBookingsCore(
+
+  @FieldResolver(() => [Experiment], { nullable: true })
+  async experiments(
     @Root() proposal: Proposal,
-    @Ctx() ctx: ResolverContext,
-    @Arg('filter', () => ProposalBookingFilter, { nullable: true })
-    filter?: ProposalBookingFilter
-  ) {
-    return ctx.queries.proposal.getProposalBookingsByProposalPk(ctx.user, {
-      proposalPk: proposal.primaryKey,
-      filter,
-    });
+    @Ctx() context: ResolverContext
+  ): Promise<Experiment[] | null> {
+    return await context.queries.proposal.getExperimentsByProposalPk(
+      context.user,
+      proposal.primaryKey
+    );
+  }
+
+  @FieldResolver(() => ProposalAttachments, { nullable: true })
+  attachments(@Root() proposal: Proposal, @Ctx() ctx: ResolverContext) {
+    return ctx.queries.questionary.getProposalAttachments(
+      ctx.user,
+      proposal.primaryKey
+    );
   }
 }
 

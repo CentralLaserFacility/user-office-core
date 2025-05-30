@@ -32,6 +32,7 @@ export default class FapQueries {
     }
 
     if (
+      this.userAuth.isApiToken(agent) ||
       this.userAuth.isUserOfficer(agent) ||
       (await this.userAuth.isMemberOfFap(agent, id))
     ) {
@@ -64,14 +65,18 @@ export default class FapQueries {
   ])
   async getFapProposals(
     agent: UserWithRole | null,
-    { fapId, callId }: { fapId: number; callId: number | null }
+    {
+      fapId,
+      callId,
+      instrumentId,
+    }: { fapId: number; callId: number | null; instrumentId: number | null }
   ) {
     if (
-      agent?.isApiAccessToken ||
+      this.userAuth.isApiToken(agent) ||
       this.userAuth.isUserOfficer(agent) ||
       (await this.userAuth.isMemberOfFap(agent, fapId))
     ) {
-      return this.dataSource.getFapProposals(fapId, callId);
+      return this.dataSource.getFapProposals({ fapId, callId, instrumentId });
     } else {
       return null;
     }
@@ -88,6 +93,7 @@ export default class FapQueries {
     { fapId, proposalPk }: { fapId: number; proposalPk: number }
   ) {
     if (
+      this.userAuth.isApiToken(agent) ||
       this.userAuth.isUserOfficer(agent) ||
       (await this.userAuth.isMemberOfFap(agent, fapId))
     ) {
@@ -112,6 +118,7 @@ export default class FapQueries {
     }: { fapId: number; instrumentId: number; callId: number }
   ) {
     if (
+      this.userAuth.isApiToken(agent) ||
       this.userAuth.isUserOfficer(agent) ||
       (await this.userAuth.isMemberOfFap(agent, fapId))
     ) {
@@ -178,6 +185,7 @@ export default class FapQueries {
     }
 
     if (
+      this.userAuth.isApiToken(agent) ||
       this.userAuth.isUserOfficer(agent) ||
       (await this.userAuth.isMemberOfFap(agent, fap.id))
     ) {

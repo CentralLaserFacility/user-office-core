@@ -9,6 +9,7 @@ import {
 import QuestionaryDetails, {
   TableRowData,
 } from 'components/questionary/QuestionaryDetails';
+import { VisitRegistrationStatus } from 'generated/sdk';
 import { useFormattedDateTime } from 'hooks/admin/useFormattedDateTime';
 import useDataApiWithFeedback from 'utils/useDataApiWithFeedback';
 import { FunctionType } from 'utils/utilTypes';
@@ -36,7 +37,7 @@ function VisitRegistrationReview({ confirm }: VisitRegistrationReviewProps) {
   const additionalDetails: TableRowData[] = [
     {
       label: 'Status',
-      value: registration.isRegistrationSubmitted ? 'Submitted' : 'Draft',
+      value: registration.status,
     },
     {
       label: 'Start date',
@@ -47,6 +48,20 @@ function VisitRegistrationReview({ confirm }: VisitRegistrationReviewProps) {
       value: toFormattedDateTime(registration.endsAt),
     },
   ];
+
+  const getSubmitButtonLabel = () => {
+    if (registration.status === VisitRegistrationStatus.DRAFTED) {
+      return 'Submit';
+    } else if (
+      registration.status === VisitRegistrationStatus.CHANGE_REQUESTED
+    ) {
+      return 'Submit changes';
+    } else if (registration.status === VisitRegistrationStatus.SUBMITTED) {
+      return '✔ Submitted';
+    }
+
+    return '';
+  };
 
   return (
     <div>
@@ -60,18 +75,18 @@ function VisitRegistrationReview({ confirm }: VisitRegistrationReviewProps) {
           onClick={() =>
             confirm(
               async () => {
-                const { updateVisitRegistration } =
-                  await api().updateVisitRegistration({
+                const { submitVisitRegistration } =
+                  await api().submitVisitRegistration({
                     visitId: state.registration.visitId,
-                    isRegistrationSubmitted: true,
+                    userId: state.registration.userId,
                   });
                 dispatch({
                   type: 'ITEM_WITH_QUESTIONARY_MODIFIED',
-                  itemWithQuestionary: updateVisitRegistration,
+                  itemWithQuestionary: submitVisitRegistration,
                 });
                 dispatch({
                   type: 'ITEM_WITH_QUESTIONARY_SUBMITTED',
-                  itemWithQuestionary: updateVisitRegistration,
+                  itemWithQuestionary: submitVisitRegistration,
                 });
               },
               {
@@ -81,10 +96,15 @@ function VisitRegistrationReview({ confirm }: VisitRegistrationReviewProps) {
               }
             )()
           }
-          disabled={registration.isRegistrationSubmitted}
+          disabled={
+            ![
+              VisitRegistrationStatus.DRAFTED,
+              VisitRegistrationStatus.CHANGE_REQUESTED,
+            ].includes(registration.status)
+          }
           data-cy="submit-visit-registration-button"
         >
-          {registration.isRegistrationSubmitted ? '✔ Submitted' : 'Submit'}
+          {getSubmitButtonLabel()}
         </NavigButton>
       </NavigationFragment>
     </div>

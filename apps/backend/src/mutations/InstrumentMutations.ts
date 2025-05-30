@@ -1,3 +1,4 @@
+import { logger } from '@user-office-software/duo-logger';
 import {
   createInstrumentValidationSchema,
   updateInstrumentValidationSchema,
@@ -11,10 +12,12 @@ import { inject, injectable } from 'tsyringe';
 
 import { UserAuthorization } from '../auth/UserAuthorization';
 import { Tokens } from '../config/Tokens';
+import { CallDataSource } from '../datasources/CallDataSource';
 import { FapDataSource } from '../datasources/FapDataSource';
 import { InstrumentDataSource } from '../datasources/InstrumentDataSource';
-import { ProposalSettingsDataSource } from '../datasources/ProposalSettingsDataSource';
+import { QuestionaryDataSource } from '../datasources/QuestionaryDataSource';
 import { ReviewDataSource } from '../datasources/ReviewDataSource';
+import { StatusDataSource } from '../datasources/StatusDataSource';
 import { TechniqueDataSource } from '../datasources/TechniqueDataSource';
 import { Authorized, EventBus, ValidateArgs } from '../decorators';
 import { Event } from '../events/event.enum';
@@ -22,6 +25,7 @@ import { Instrument, InstrumentsHasProposals } from '../models/Instrument';
 import { rejection, Rejection } from '../models/Rejection';
 import { Roles } from '../models/Role';
 import { UserWithRole } from '../models/User';
+import { WorkflowType } from '../models/Workflow';
 import {
   AssignProposalsToInstrumentsArgs,
   RemoveProposalsFromInstrumentArgs,
@@ -47,11 +51,15 @@ export default class InstrumentMutations {
     @inject(Tokens.FapDataSource) private fapDataSource: FapDataSource,
     @inject(Tokens.ProposalDataSource)
     private proposalDataSource: ProposalDataSource,
-    @inject(Tokens.ProposalSettingsDataSource)
-    private proposalSettingsDataSource: ProposalSettingsDataSource,
+    @inject(Tokens.StatusDataSource)
+    private statusDataSource: StatusDataSource,
     @inject(Tokens.UserAuthorization) private userAuth: UserAuthorization,
     @inject(Tokens.ReviewDataSource)
     private reviewDataSource: ReviewDataSource,
+    @inject(Tokens.CallDataSource)
+    private callDataSource: CallDataSource,
+    @inject(Tokens.QuestionaryDataSource)
+    private questionaryDataSource: QuestionaryDataSource,
     @inject(Tokens.TechniqueDataSource)
     private techniqueDataSource: TechniqueDataSource
   ) {}
@@ -79,13 +87,45 @@ export default class InstrumentMutations {
     agent: UserWithRole | null,
     args: UpdateInstrumentArgs
   ): Promise<Instrument | Rejection> {
-    return this.dataSource.update(args).catch((error) => {
+    try {
+      const currentInstrument = await this.dataSource.getInstrument(args.id);
+
+      if (!currentInstrument) {
+        return rejection('Instrument not found', { instrumentId: args.id });
+      }
+
+      if (
+        args.managerUserId &&
+        args.managerUserId !== currentInstrument.managerUserId &&
+        args.updateTechReview
+      ) {
+        const updateSuccess =
+          await this.reviewDataSource.updateInstrumentContact(
+            args.managerUserId,
+            currentInstrument.id
+          );
+
+        if (!updateSuccess) {
+          return rejection('Failed to update contact ', {
+            instrumentId: currentInstrument.id,
+            managerUserId: args.managerUserId,
+          });
+        }
+      }
+
+      return await this.dataSource.update(args);
+    } catch (error) {
+      logger.logError('Error updating instrument:', {
+        message: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
+
       return rejection(
         'Could not update instrument',
         { agent, instrumentId: args.id },
         error
       );
-    });
+    }
   }
 
   @EventBus(Event.INSTRUMENT_DELETED)
@@ -154,6 +194,7 @@ export default class InstrumentMutations {
         args,
       }
     );
+
     const instrumentHasProposalIds: number[] = [];
 
     // TODO: Cleanup this part because it is quite ugly
@@ -230,6 +271,30 @@ export default class InstrumentMutations {
               instrumentId: instrument.id,
             });
           } else {
+            const proposal = await this.proposalDataSource.get(proposalPk);
+
+            if (!proposal) {
+              return rejection(
+                'Cannot find the proposal for the technical review to be created',
+                { agent, args }
+              );
+            }
+
+            const call = await this.callDataSource.getCall(proposal.callId);
+
+            if (!call) {
+              return rejection(
+                'Cannot find the call for proposal of the technical review to be created',
+                { agent, args }
+              );
+            }
+
+            const technicalReviewQuestionary =
+              await this.questionaryDataSource.create(
+                proposal.proposerId,
+                call.technicalReviewTemplateId
+              );
+
             await this.reviewDataSource.setTechnicalReview(
               {
                 proposalPk: proposalPk,
@@ -241,6 +306,7 @@ export default class InstrumentMutations {
                 files: null,
                 submitted: false,
                 instrumentId: instrument.id,
+                questionaryId: technicalReviewQuestionary.questionaryId,
               },
               false
             );
@@ -342,7 +408,10 @@ export default class InstrumentMutations {
     agent: UserWithRole | null,
     args: InstrumentSubmitInFapArgs
   ): Promise<InstrumentsHasProposals | Rejection> {
-    if (!this.userAuth.isUserOfficer(agent)) {
+    if (
+      !this.userAuth.isApiToken(agent) &&
+      !this.userAuth.isUserOfficer(agent)
+    ) {
       return rejection('Submitting FAP instrument is not permitted', {
         code: ApolloServerErrorCodeExtended.INSUFFICIENT_PERMISSIONS,
         agent,
@@ -419,6 +488,7 @@ export default class InstrumentMutations {
     args: InstrumentSubmitInFapArgs
   ): Promise<InstrumentsHasProposals | Rejection> {
     if (
+      !this.userAuth.isApiToken(agent) &&
       !this.userAuth.isUserOfficer(agent) &&
       !(await this.userAuth.isChairOrSecretaryOfFap(agent, args.fapId))
     ) {
@@ -452,7 +522,7 @@ export default class InstrumentMutations {
   }
 
   @Authorized([Roles.USER_OFFICER, Roles.INSTRUMENT_SCIENTIST])
-  async assignXpressProposalsToInstruments(
+  async assignTechniqueProposalsToInstruments(
     agent: UserWithRole | null,
     args: AssignProposalsToInstrumentsArgs
   ): Promise<InstrumentsHasProposals | Rejection> {
@@ -477,8 +547,9 @@ export default class InstrumentMutations {
         );
       }
 
-      const statuses =
-        await this.proposalSettingsDataSource.getAllProposalStatuses();
+      const statuses = await this.statusDataSource.getAllStatuses(
+        WorkflowType.PROPOSAL
+      );
 
       const currentStatus = statuses.find((s) => s.id === proposal.statusId);
 
@@ -518,13 +589,13 @@ export default class InstrumentMutations {
         techniquesWithProposal.map((technique) => technique.id)
       );
 
-    const isXpress = instrumentWithTechnique.find(
+    const isTechniqueProposal = instrumentWithTechnique.find(
       (instruments) => instruments.id === args.instrumentIds[0]
     )
       ? true
       : false;
 
-    if (!isXpress) {
+    if (!isTechniqueProposal) {
       return rejection(
         'Could not assign instrument: instrument does not belong to proposal techniques',
         {

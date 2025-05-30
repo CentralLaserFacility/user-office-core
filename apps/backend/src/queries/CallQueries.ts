@@ -6,7 +6,7 @@ import { CallDataSource } from '../datasources/CallDataSource';
 import { Authorized } from '../decorators';
 import { Roles } from '../models/Role';
 import { UserWithRole } from '../models/User';
-import { CallsFilter } from './../resolvers/queries/CallsQuery';
+import { CallsFilter } from '../resolvers/queries/CallsQuery';
 
 @injectable()
 export default class CallQueries {
@@ -43,7 +43,10 @@ export default class CallQueries {
     agent: UserWithRole | null,
     scientistId: number
   ) {
-    if (!this.userAuth.isUserOfficer(agent) && agent?.id !== scientistId) {
+    if (
+      this.userAuth.isApiToken(agent) ||
+      (!this.userAuth.isUserOfficer(agent) && agent?.id !== scientistId)
+    ) {
       return null;
     }
 

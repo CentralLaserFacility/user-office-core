@@ -9,24 +9,19 @@ import { Event } from '../../events/event.enum';
 import { Call } from '../../models/Call';
 import { Proposal, Proposals } from '../../models/Proposal';
 import { ProposalView } from '../../models/ProposalView';
-import { ProposalWorkflowConnection } from '../../models/ProposalWorkflowConnections';
 import { getQuestionDefinition } from '../../models/questionTypes/QuestionRegistry';
 import { ReviewerFilter } from '../../models/Review';
 import { Roles } from '../../models/Role';
-import { ScheduledEventCore } from '../../models/ScheduledEventCore';
 import { SettingsId } from '../../models/Settings';
 import { TechnicalReview } from '../../models/TechnicalReview';
+import { Technique } from '../../models/Technique';
 import { UserWithRole } from '../../models/User';
+import { WorkflowConnectionWithStatus } from '../../models/WorkflowConnections';
 import { UpdateTechnicalReviewAssigneeInput } from '../../resolvers/mutations/UpdateTechnicalReviewAssigneeMutation';
-import {
-  ProposalBookingFilter,
-  ProposalBookingScheduledEventFilterCore,
-} from '../../resolvers/types/ProposalBooking';
 import { UserProposalsFilter } from '../../resolvers/types/User';
-import { removeDuplicates } from '../../utils/helperFunctions';
 import { AdminDataSource } from '../AdminDataSource';
 import { ProposalDataSource } from '../ProposalDataSource';
-import { ProposalSettingsDataSource } from '../ProposalSettingsDataSource';
+import { WorkflowDataSource } from '../WorkflowDataSource';
 import {
   ProposalsFilter,
   QuestionFilterInput,
@@ -36,15 +31,15 @@ import {
   CallRecord,
   createProposalObject,
   createProposalViewObject,
-  createScheduledEventObject,
   createTechnicalReviewObject,
   ProposalEventsRecord,
   ProposalRecord,
   ProposalViewRecord,
-  ProposalWorkflowConnectionRecord,
-  ScheduledEventRecord,
+  WorkflowConnectionRecord,
   StatusChangingEventRecord,
   TechnicalReviewRecord,
+  TechniqueRecord,
+  createProposalViewObjectWithTechniques,
 } from './records';
 
 const fieldMap: { [key: string]: string } = {
@@ -64,6 +59,7 @@ const fieldMap: { [key: string]: string } = {
   title: 'title',
   submitted: 'submitted',
   notified: 'notified',
+  submittedDate: 'submitted_date',
 };
 
 export async function calculateReferenceNumber(
@@ -102,8 +98,8 @@ export async function calculateReferenceNumber(
 @injectable()
 export default class PostgresProposalDataSource implements ProposalDataSource {
   constructor(
-    @inject(Tokens.ProposalSettingsDataSource)
-    private proposalSettingsDataSource: ProposalSettingsDataSource,
+    @inject(Tokens.WorkflowDataSource)
+    private workflowDataSource: WorkflowDataSource,
     @inject(Tokens.AdminDataSource)
     private AdminDataSource: AdminDataSource
   ) {}
@@ -230,6 +226,12 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
 
         return createProposalObject(proposal[0]);
       });
+  }
+
+  async addProposalUser(proposalPk: number, userId: number): Promise<void> {
+    return database
+      .insert({ proposal_pk: proposalPk, user_id: userId })
+      .into('proposal_user');
   }
 
   async setProposalUsers(proposalPk: number, userIds: number[]): Promise<void> {
@@ -375,6 +377,11 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
     return query;
   }
 
+  safeEscapeRegexExpression(expression: string): string {
+    const escaped = expression.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    return escaped;
+  }
   async getProposalsFromView(
     filter?: ProposalsFilter,
     first?: number,
@@ -435,20 +442,22 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
           searchText !== null &&
           searchText !== undefined
         ) {
+          const regexLiteral = this.safeEscapeRegexExpression(searchText);
+          // NOTE: Using jsonpath we check the jsonb (instruments) field if it contains object with name equal to searchText case insensitive
+          const jsonPathPattern = `$[*] ? (@.name.type() == "string" && @.name like_regex "${regexLiteral}" flag "i")`;
+
           query.andWhere((qb) =>
             qb
-              .orWhereRaw('proposal_id ILIKE ?', `%${searchText}%`)
-              .orWhereRaw('title ILIKE ?', `%${searchText}%`)
-              .orWhereRaw('proposal_status_name ILIKE ?', `%${searchText}%`)
+              .orWhereRaw('proposal_id ILIKE ?', [`%${searchText}%`])
+              .orWhereRaw('title ILIKE ?', [`%${searchText}%`])
+              .orWhereRaw('proposal_status_name ILIKE ?', [`%${searchText}%`])
               .orWhere('users.email', 'ilike', `%${searchText}%`)
               .orWhere('users.firstname', 'ilike', `%${searchText}%`)
               .orWhere('users.lastname', 'ilike', `%${searchText}%`)
               .orWhere('principal_investigator', 'in', principalInvestigator)
-              // NOTE: Using jsonpath we check the jsonb (instruments) field if it contains object with name equal to searchText case insensitive
-              .orWhereRaw(
-                'jsonb_path_exists(instruments, \'$[*].name \\? (@.type() == "string" && @ like_regex :searchText: flag "i")\')',
-                { searchText }
-              )
+              .orWhereRaw('jsonb_path_exists(instruments, ?)', [
+                jsonPathPattern,
+              ])
           );
         }
 
@@ -863,21 +872,21 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
         const proposalWorkflowId = proposalCall.proposal_workflow_id;
 
         const proposalEventsToReset: (StatusChangingEventRecord &
-          ProposalWorkflowConnectionRecord)[] = (
+          WorkflowConnectionRecord)[] = (
           await database
             .raw(
               `
         SELECT *
-        FROM proposal_workflow_connections AS pwc
-        JOIN status_changing_events
-        ON status_changing_events.proposal_workflow_connection_id = pwc.proposal_workflow_connection_id
-        WHERE pwc.proposal_workflow_connection_id >= (
-          SELECT proposal_workflow_connection_id
-          FROM proposal_workflow_connections
-          WHERE proposal_workflow_id = ${proposalWorkflowId}
-          AND proposal_status_id = ${statusId}
+        FROM workflow_connections AS wc
+        JOIN status_changing_events sce
+        ON sce.workflow_connection_id = wc.workflow_connection_id
+        WHERE wc.workflow_connection_id >= (
+          SELECT workflow_connection_id
+          FROM workflow_connections
+          WHERE workflow_id = ${proposalWorkflowId}
+          AND status_id = ${statusId}
         )
-        AND pwc.proposal_workflow_id = ${proposalWorkflowId};
+        AND wc.workflow_id = ${proposalWorkflowId};
       `
             )
             .transacting(trx)
@@ -952,133 +961,6 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
     return new Proposals(result.map((item) => createProposalObject(item)));
   }
 
-  async getProposalBookingsByProposalPk(
-    proposalPk: number,
-    filter?: ProposalBookingFilter
-  ): Promise<{ ids: number[] } | null> {
-    const result: ScheduledEventRecord[] = await database<
-      ScheduledEventRecord[]
-    >('scheduled_events')
-      .select()
-      .where('proposal_pk', proposalPk)
-      .modify((qb) => {
-        if (filter?.status) {
-          qb.whereIn('status', filter.status);
-        }
-      });
-
-    if (result) {
-      return {
-        ids: removeDuplicates(
-          result.map((bookingId) => bookingId.proposal_booking_id)
-        ),
-      };
-    } else {
-      return null;
-    }
-  }
-
-  async getAllProposalBookingsScheduledEvents(
-    proposalBookingIds: number[],
-    filter?: ProposalBookingScheduledEventFilterCore
-  ): Promise<ScheduledEventCore[] | null> {
-    const scheduledEventRecords: ScheduledEventRecord[] =
-      await database<ScheduledEventRecord>('scheduled_events')
-        .select()
-        .whereIn('proposal_booking_id', proposalBookingIds)
-        .orderBy('starts_at', 'asc')
-        .modify((qb) => {
-          if (filter?.status) {
-            qb.whereIn('status', filter.status);
-          }
-          if (filter?.bookingType) {
-            qb.where('booking_type', filter.bookingType);
-          }
-
-          if (filter?.endsAfter !== undefined && filter?.endsAfter !== null) {
-            qb.where('ends_at', '>=', filter.endsAfter);
-          }
-
-          if (filter?.endsBefore !== undefined && filter.endsBefore !== null) {
-            qb.where('ends_at', '<=', filter.endsBefore);
-          }
-        });
-
-    return scheduledEventRecords.map(createScheduledEventObject);
-  }
-
-  async addProposalBookingScheduledEvent(
-    eventMessage: ScheduledEventCore
-  ): Promise<void> {
-    const [addedScheduledEvent]: ScheduledEventRecord[] = await database
-      .insert({
-        scheduled_event_id: eventMessage.id,
-        booking_type: eventMessage.bookingType,
-        starts_at: eventMessage.startsAt,
-        ends_at: eventMessage.endsAt,
-        proposal_booking_id: eventMessage.proposalBookingId,
-        proposal_pk: eventMessage.proposalPk,
-        status: eventMessage.status,
-        local_contact: eventMessage.localContactId,
-        instrument_id: eventMessage.instrumentId,
-      })
-      .into('scheduled_events')
-      .returning(['*']);
-
-    if (!addedScheduledEvent) {
-      throw new GraphQLError(
-        `Failed to add proposal booking scheduled event '${eventMessage.id}'`
-      );
-    }
-  }
-
-  async updateProposalBookingScheduledEvent(
-    eventToUpdate: ScheduledEventCore
-  ): Promise<void> {
-    const [updatedScheduledEvent]: ScheduledEventRecord[] = await database(
-      'scheduled_events'
-    )
-      .update({
-        starts_at: eventToUpdate.startsAt,
-        ends_at: eventToUpdate.endsAt,
-        status: eventToUpdate.status,
-        local_contact: eventToUpdate.localContactId,
-      })
-      .where('scheduled_event_id', eventToUpdate.id)
-      .andWhere('proposal_booking_id', eventToUpdate.proposalBookingId)
-      .returning(['*']);
-
-    if (!updatedScheduledEvent) {
-      throw new GraphQLError(
-        `Failed to update proposal booking scheduled event '${eventToUpdate.id}'`
-      );
-    }
-  }
-
-  async removeProposalBookingScheduledEvents(
-    eventMessage: ScheduledEventCore[]
-  ): Promise<void> {
-    const [removedScheduledEvent]: ScheduledEventRecord[] = await database(
-      'scheduled_events'
-    )
-      .whereIn(
-        'scheduled_event_id',
-        eventMessage.map((event) => event.id)
-      )
-      .andWhere('proposal_booking_id', eventMessage[0].proposalBookingId)
-      .andWhere('instrument_id', eventMessage[0].instrumentId)
-      .del()
-      .returning('*');
-
-    if (!removedScheduledEvent) {
-      throw new GraphQLError(
-        `Could not delete scheduled events with ids: ${eventMessage
-          .map((event) => event.id)
-          .join(', ')} `
-      );
-    }
-  }
-
   async getRelatedUsersOnProposals(id: number): Promise<number[]> {
     const relatedCoIs = await database
       .select('ou.user_id')
@@ -1140,13 +1022,20 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
       .first()
       .then((value) => value.proposal_workflow_id);
 
-    const proposalStatus: ProposalWorkflowConnection[] =
-      await this.proposalSettingsDataSource.getProposalWorkflowConnections(
-        proposalWorkflowId
-      );
+    const proposalStatus: WorkflowConnectionWithStatus[] =
+      await this.workflowDataSource.getWorkflowConnections(proposalWorkflowId);
 
     return !!proposalStatus.find((status) =>
-      status.proposalStatus.shortCode.match(workflowStatus)
+      status.status.shortCode.match(workflowStatus)
+    );
+  }
+
+  createTechniqueObject(technique: TechniqueRecord): Technique {
+    return new Technique(
+      technique.technique_id,
+      technique.name,
+      technique.short_code,
+      technique.description
     );
   }
 
@@ -1159,7 +1048,228 @@ export default class PostgresProposalDataSource implements ProposalDataSource {
     sortDirection?: string,
     searchText?: string
   ): Promise<{ totalCount: number; proposals: ProposalView[] }> {
-    return { totalCount: 0, proposals: [] };
+    /*
+    Get proposal PKs and techniques and apply most filtering.
+    It is more efficient to do this filtering earlier on despite
+    multiple rows being returned per PK due to the joins.
+    */
+    type ProposalPkWithTechnique = TechniqueRecord & { proposalPk: number };
+
+    const proposalsWithTechnique: ProposalPkWithTechnique[] = await database
+      .select(['proposals.proposal_pk as proposalPk', 'tech.*'])
+      .from('proposals')
+      .join(
+        'technique_has_proposals as thp',
+        'thp.proposal_id',
+        '=',
+        'proposals.proposal_pk'
+      )
+      .join('techniques as tech', 'tech.technique_id', '=', 'thp.technique_id')
+      .leftJoin(
+        'technique_has_scientists as ths',
+        'ths.technique_id',
+        '=',
+        'thp.technique_id'
+      )
+      .leftJoin(
+        'technique_has_instruments as thi',
+        'thi.technique_id',
+        '=',
+        'thp.technique_id'
+      )
+      .leftJoin(
+        'instruments as ins',
+        'thi.instrument_id',
+        '=',
+        'ins.instrument_id'
+      )
+      .modify((query) => {
+        const instrumentId = filter?.instrumentFilter?.instrumentId;
+
+        if (instrumentId && !isNaN(instrumentId)) {
+          query.join('instrument_has_proposals as ihp', function () {
+            this.on('ihp.proposal_pk', '=', 'proposals.proposal_pk').andOnVal(
+              'ihp.instrument_id',
+              '=',
+              instrumentId
+            );
+          });
+        }
+      })
+      .where((query) => {
+        if (user.currentRole?.shortCode === Roles.INSTRUMENT_SCIENTIST) {
+          query.where('ths.user_id', user.id);
+        }
+
+        if (searchText) {
+          query.andWhere((qb) =>
+            qb
+              .orWhereRaw('proposals.proposal_id ILIKE ?', `%${searchText}%`)
+              .orWhereRaw('title ILIKE ?', `%${searchText}%`)
+          );
+        }
+
+        if (filter?.callId) {
+          query.where('call_id', filter.callId);
+        }
+
+        if (filter?.proposalStatusId) {
+          query.where('status_id', filter?.proposalStatusId);
+        }
+
+        if (filter?.shortCodes) {
+          const filteredAndPreparedShortCodes = filter?.shortCodes
+            .filter((shortCode) => shortCode)
+            .join('|');
+
+          query.whereRaw(
+            `proposals.proposal_id similar to '%(${filteredAndPreparedShortCodes})%'`
+          );
+        }
+
+        if (filter?.referenceNumbers) {
+          query.whereIn('proposals.proposal_id', filter.referenceNumbers);
+        }
+
+        if (filter?.excludeProposalStatusIds) {
+          query.where('status_id', 'not in', filter?.excludeProposalStatusIds);
+        }
+
+        if (
+          filter?.dateFilter?.from != null &&
+          filter?.dateFilter?.from !== 'Invalid DateTime'
+        ) {
+          const dateParts: string[] = filter.dateFilter.from.split('-');
+          const year = +dateParts[2];
+          const month = +dateParts[1] - 1;
+          const day = +dateParts[0];
+
+          const dateObject: Date = new Date(year, month, day);
+
+          query.where(function () {
+            this.where('submitted_date', '>=', dateObject).orWhere(function () {
+              this.whereNull('submitted_date').andWhere(
+                'created_at',
+                '>=',
+                dateObject
+              );
+            });
+          });
+        }
+
+        if (
+          filter?.dateFilter?.to != null &&
+          filter?.dateFilter?.to !== 'Invalid DateTime'
+        ) {
+          const dateParts: string[] = filter.dateFilter.to.split('-');
+          const year = +dateParts[2];
+          const month = +dateParts[1] - 1;
+          const day = +dateParts[0];
+
+          const dateObject: Date = new Date(year, month, day);
+
+          query.where(function () {
+            this.where('submitted_date', '<=', dateObject).orWhere(function () {
+              this.whereNull('submitted_date').andWhere(
+                'created_at',
+                '<=',
+                dateObject
+              );
+            });
+          });
+        }
+      });
+
+    /*
+    Make a map of each unique PK and its techniques.
+    */
+    const proposalTechniquesMap: Record<number, Technique[]> =
+      proposalsWithTechnique.reduce(
+        (acc, record) => {
+          const { proposalPk, ...techniqueRecord } = record;
+
+          const newTechnique = this.createTechniqueObject(techniqueRecord);
+
+          if (!acc[proposalPk]) {
+            acc[proposalPk] = [];
+          }
+
+          if (
+            !acc[proposalPk].some(
+              (existingTechnique) => existingTechnique.id === newTechnique.id
+            )
+          ) {
+            acc[proposalPk].push(newTechnique);
+          }
+
+          return acc;
+        },
+        {} as Record<number, Technique[]>
+      );
+
+    const proposalPks = Object.keys(proposalTechniquesMap).map(Number);
+
+    /*
+    Get the unique list of PKs from the view and apply the last part
+    of filtering needed at the end. The technique is retrieved from the map.
+    */
+    const result = database
+      .select(['*', database.raw('count(*) OVER() AS full_count')])
+      .from('proposal_table_view')
+      .whereIn('proposal_pk', proposalPks)
+      .modify((query) => {
+        if (filter?.techniqueFilter?.techniqueId) {
+          const filteredPksByTechnique = Object.keys(proposalTechniquesMap)
+            .map(Number)
+            .filter((proposalPk) =>
+              proposalTechniquesMap[proposalPk]?.some(
+                (technique) =>
+                  technique.id === filter.techniqueFilter?.techniqueId
+              )
+            );
+
+          query.whereIn('proposal_pk', filteredPksByTechnique);
+        }
+
+        if (sortField && sortDirection) {
+          if (!fieldMap.hasOwnProperty(sortField)) {
+            throw new GraphQLError(`Bad sort field given: ${sortField}`);
+          }
+          sortField = fieldMap[sortField];
+          query.orderBy(sortField, sortDirection);
+        } else {
+          query.orderBy('proposal_pk', 'desc');
+        }
+
+        if (first) {
+          query.limit(first);
+        }
+        if (offset) {
+          query.offset(offset);
+        }
+      })
+      .then((proposals: ProposalViewRecord[]) => {
+        const props = proposals.map((proposal) => {
+          const proposalTechniques =
+            proposalTechniquesMap[proposal.proposal_pk];
+
+          if (proposalTechniques?.length) {
+            return createProposalViewObjectWithTechniques(
+              proposal,
+              proposalTechniques.sort((a, b) => a.name.localeCompare(b.name))
+            );
+          }
+
+          return createProposalViewObject(proposal);
+        });
+
+        return {
+          totalCount: proposals[0] ? proposals[0].full_count : 0,
+          proposals: props,
+        };
+      });
+
+    return result;
   }
 
   async submitImportedProposal(

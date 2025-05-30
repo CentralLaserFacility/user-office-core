@@ -1,7 +1,6 @@
 import { logger } from '@user-office-software/duo-logger';
 import { container } from 'tsyringe';
 
-import { ProposalAuthorization } from '../../auth/ProposalAuthorization';
 import baseContext from '../../buildContext';
 import { Tokens } from '../../config/Tokens';
 import { CallDataSource } from '../../datasources/CallDataSource';
@@ -169,23 +168,31 @@ const addTopicInformation = async (
     }
 
     const questionaryAttachments: Attachment[] = [];
-
+    const updatedAnswers: Answer[] = [];
     for (let i = 0; i < answers.length; i++) {
       const answer = answers[i];
 
       questionaryAttachments.push(...getFileAttachments(answer));
 
       if (answer.question.dataType === DataType.SAMPLE_DECLARATION) {
-        answer.value = samples
+        const value = samples
           .filter((sample) => sample.questionId === answer.question.id)
           .map((sample) => sample);
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
       } else if (answer.question.dataType === DataType.GENERIC_TEMPLATE) {
-        answer.value = genericTemplates
+        const value = genericTemplates
           .filter(
             (genericTemplate) =>
               genericTemplate.questionId === answer.question.id
           )
           .map((genericTemplate) => genericTemplate);
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
       } else if (answer.question.dataType === DataType.INSTRUMENT_PICKER) {
         const ids = Array.isArray(answer.value)
           ? answer.value.map((v: { instrumentId: string }) =>
@@ -203,13 +210,21 @@ const addTopicInformation = async (
         const call = await callDataSource.getCallByAnswerIdProposal(
           answer.answerId
         );
-        answer.value = instrumentPickerAnswer(answer, instruments, call);
+        const value = instrumentPickerAnswer(answer, instruments, call);
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
+      } else {
+        updatedAnswers.push({
+          ...answer,
+        });
       }
     }
 
     updatedProposalPDFData.questionarySteps.push({
       ...step,
-      fields: answers,
+      fields: updatedAnswers,
     });
     updatedProposalPDFData.attachments.push(...questionaryAttachments);
     updatedProposalPDFData.attachments.push(...sampleAttachments);
@@ -224,17 +239,10 @@ export const collectProposalPDFData = async (
   user: UserWithRole,
   notify?: CallableFunction
 ): Promise<ProposalPDFData> => {
-  const proposalAuth = container.resolve(ProposalAuthorization);
   const proposal = await baseContext.queries.proposal.get(user, proposalPk);
 
   if (proposal === null) {
     throw new Error('Proposal not found');
-  }
-
-  // Authenticate user
-  const hasReadRights = await proposalAuth.hasReadRights(user, proposal);
-  if (hasReadRights === false) {
-    throw new Error('User was not allowed to download PDF');
   }
 
   const call = await baseContext.queries.call.get(user, proposal.callId);
@@ -365,23 +373,31 @@ export const collectProposalPDFData = async (
     }
 
     const questionaryAttachments: Attachment[] = [];
-
+    const updatedAnswers: Answer[] = [];
     for (let i = 0; i < answers.length; i++) {
       const answer = answers[i];
 
       questionaryAttachments.push(...getFileAttachments(answer));
 
       if (answer.question.dataType === DataType.SAMPLE_DECLARATION) {
-        answer.value = samples
+        const value = samples
           .filter((sample) => sample.questionId === answer.question.id)
           .map((sample) => sample);
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
       } else if (answer.question.dataType === DataType.GENERIC_TEMPLATE) {
-        answer.value = genericTemplates
+        const value = genericTemplates
           .filter(
             (genericTemplate) =>
               genericTemplate.questionId === answer.question.id
           )
           .map((genericTemplate) => genericTemplate);
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
       } else if (answer.question.dataType === DataType.INSTRUMENT_PICKER) {
         const ids = Array.isArray(answer.value)
           ? answer.value.map((v: { instrumentId: string }) =>
@@ -391,7 +407,11 @@ export const collectProposalPDFData = async (
         const instruments =
           await baseContext.queries.instrument.getInstrumentsByIds(user, ids);
 
-        answer.value = instrumentPickerAnswer(answer, instruments, call);
+        const value = instrumentPickerAnswer(answer, instruments, call);
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
       } else if (answer.question.dataType === DataType.TECHNIQUE_PICKER) {
         const techniqueIds = Array.isArray(answer.value)
           ? answer.value
@@ -401,15 +421,23 @@ export const collectProposalPDFData = async (
             user,
             techniqueIds
           );
-        answer.value = techniques?.length
+        const value = techniques?.length
           ? techniques.map((technique) => technique.name).join(', ')
           : '';
+        updatedAnswers.push({
+          ...answer,
+          value,
+        });
+      } else {
+        updatedAnswers.push({
+          ...answer,
+        });
       }
     }
 
     out.questionarySteps.push({
       ...step,
-      fields: answers,
+      fields: updatedAnswers,
     });
     out.attachments.push(...questionaryAttachments);
     out.attachments.push(...sampleAttachments);
@@ -417,7 +445,7 @@ export const collectProposalPDFData = async (
   }
 
   const technicalReviews =
-    await baseContext.queries.review.technicalReviewsForProposal(
+    await baseContext.queries.technicalReview.reviewsForProposal(
       user,
       proposal.primaryKey
     );
@@ -563,9 +591,12 @@ export const collectProposalPDFDataTokenAccess = async (
       Tokens.GenericTemplateDataSource
     );
 
-  const genericTemplates = await genericTemplateDataSource.getGenericTemplates({
-    filter: { proposalPk: proposal.primaryKey },
-  });
+  const genericTemplates = await genericTemplateDataSource.getGenericTemplates(
+    {
+      filter: { proposalPk: proposal.primaryKey },
+    },
+    user
+  );
 
   const genericTemplatePDFData = (
     await Promise.all(

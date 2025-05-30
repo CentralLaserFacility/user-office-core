@@ -8,12 +8,7 @@ import React from 'react';
 import * as Yup from 'yup';
 
 import { SortDirectionType } from 'components/common/SuperMaterialTable';
-import {
-  Proposal,
-  ProposalEndStatus,
-  ProposalStatus,
-  Scalars,
-} from 'generated/sdk';
+import { Proposal, ProposalEndStatus, Scalars, Status } from 'generated/sdk';
 import { ProposalViewData } from 'hooks/proposal/useProposalsCoreData';
 
 import { FunctionType } from './utilTypes';
@@ -55,7 +50,7 @@ export const setSortDirectionOnSortField = (
 
 export const getProposalStatus = (
   proposal: {
-    status: ProposalStatus | null;
+    status: Status | null;
     finalStatus?: ProposalEndStatus | null | undefined;
     notified: boolean;
   } | null
@@ -92,6 +87,7 @@ export const fromProposalToProposalView = (proposal: Proposal) =>
         status: getTranslation(tr.status as ResourceId),
         submitted: tr.submitted,
         timeAllocation: tr.timeAllocation,
+        instrumentId: tr.instrumentId,
         technicalReviewAssignee: {
           id: tr.technicalReviewAssignee?.id,
           firstname: tr.technicalReviewAssignee?.firstname,

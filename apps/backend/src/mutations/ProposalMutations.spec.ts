@@ -2,14 +2,13 @@ import 'reflect-metadata';
 import { container } from 'tsyringe';
 
 import { Tokens } from '../config/Tokens';
-import { InstrumentDataSourceMock } from '../datasources/mockups/InstrumentDataSource';
 import {
   ProposalDataSourceMock,
   dummyProposalWithNotActiveCall,
   dummyProposalSubmitted,
   dummyProposal,
 } from '../datasources/mockups/ProposalDataSource';
-import { ProposalSettingsDataSourceMock } from '../datasources/mockups/ProposalSettingsDataSource';
+import { StatusDataSourceMock } from '../datasources/mockups/StatusDataSource';
 import {
   dummyInstrumentScientist,
   dummyPrincipalInvestigatorWithRole,
@@ -19,15 +18,15 @@ import {
   dummyUserWithRole,
 } from '../datasources/mockups/UserDataSource';
 import { Proposal } from '../models/Proposal';
-import { ProposalStatus } from '../models/ProposalStatus';
 import { isRejection, Rejection } from '../models/Rejection';
+import { Status } from '../models/Status';
+import { WorkflowType } from '../models/Workflow';
 import ProposalMutations from './ProposalMutations';
 
 const proposalMutations = container.resolve(ProposalMutations);
 
 let proposalDataSource: ProposalDataSourceMock;
-let proposalSettingsDataSource: ProposalSettingsDataSourceMock;
-let instrumentDataSource: InstrumentDataSourceMock;
+let statusDataSource: StatusDataSourceMock;
 
 beforeEach(() => {
   proposalDataSource = container.resolve<ProposalDataSourceMock>(
@@ -35,13 +34,8 @@ beforeEach(() => {
   );
   proposalDataSource.init();
 
-  proposalSettingsDataSource =
-    container.resolve<ProposalSettingsDataSourceMock>(
-      Tokens.ProposalSettingsDataSource
-    );
-
-  instrumentDataSource = container.resolve<InstrumentDataSourceMock>(
-    Tokens.ProposalSettingsDataSource
+  statusDataSource = container.resolve<StatusDataSourceMock>(
+    Tokens.StatusDataSource
   );
 });
 
@@ -409,50 +403,81 @@ test('Proposal can be submitted with techniques and instrument', () => {
   ).resolves.not.toBeInstanceOf(Proposal);
 });
 
-describe('Test Xpress change status', () => {
+describe('Test technique proposal change status', () => {
   const draftId = 1;
   const submittedId = 2;
   const underReviewId = 3;
   const approvedId = 4;
   const unsuccessfulId = 5;
   const finishedId = 6;
-  const nonXpressId = 7;
+  const nonTechniqueProposalId = 7;
   const expiredId = 7;
 
   const dummyProposalStatuses = [
-    new ProposalStatus(draftId, 'DRAFT', 'Draft', '', true),
-    new ProposalStatus(
+    new Status(draftId, 'DRAFT', 'Draft', '', true, WorkflowType.PROPOSAL),
+    new Status(
       submittedId,
       'SUBMITTED_LOCKED',
       'Submitted (locked)',
       '',
-      true
+      true,
+      WorkflowType.PROPOSAL
     ),
-    new ProposalStatus(underReviewId, 'UNDER_REVIEW', 'Under review', '', true),
-    new ProposalStatus(approvedId, 'APPROVED', 'Approved', '', true),
-    new ProposalStatus(
+    new Status(
+      underReviewId,
+      'UNDER_REVIEW',
+      'Under review',
+      '',
+      true,
+      WorkflowType.PROPOSAL
+    ),
+    new Status(
+      approvedId,
+      'APPROVED',
+      'Approved',
+      '',
+      true,
+      WorkflowType.PROPOSAL
+    ),
+    new Status(
       unsuccessfulId,
       'UNSUCCESSFUL',
       'Unsuccessful',
       '',
-      true
+      true,
+      WorkflowType.PROPOSAL
     ),
-    new ProposalStatus(finishedId, 'FINISHED', 'Finished', '', true),
-    new ProposalStatus(
-      nonXpressId,
-      'NON-XPRESS',
-      'A non-xpress status',
+    new Status(
+      finishedId,
+      'FINISHED',
+      'Finished',
       '',
-      true
+      true,
+      WorkflowType.PROPOSAL
     ),
-    new ProposalStatus(expiredId, 'EXPIRED', 'Expired', '', true),
+    new Status(
+      nonTechniqueProposalId,
+      'NON-TP',
+      'A non-technique proposal status',
+      '',
+      true,
+      WorkflowType.PROPOSAL
+    ),
+    new Status(
+      expiredId,
+      'EXPIRED',
+      'Expired',
+      '',
+      true,
+      WorkflowType.PROPOSAL
+    ),
   ];
 
   beforeEach(() => {
     jest.restoreAllMocks();
 
     jest
-      .spyOn(proposalSettingsDataSource, 'getAllProposalStatuses')
+      .spyOn(statusDataSource, 'getAllStatuses')
       .mockResolvedValue(dummyProposalStatuses);
   });
 
@@ -471,10 +496,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: underReviewId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: underReviewId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('unmodifiable current status'),
@@ -497,10 +525,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: underReviewId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: underReviewId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('unmodifiable current status'),
@@ -523,10 +554,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: underReviewId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: underReviewId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('unmodifiable current status'),
@@ -549,10 +583,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: underReviewId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: underReviewId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('same status'),
@@ -560,7 +597,7 @@ describe('Test Xpress change status', () => {
     );
   });
 
-  test('A scientist cannot change status when a non-Xpress status is provided', async () => {
+  test('A scientist cannot change status when a non-technique proposal status is provided', async () => {
     jest.spyOn(proposalDataSource, 'getProposalsByPks').mockResolvedValue([
       {
         ...dummyProposal,
@@ -575,10 +612,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: nonXpressId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: nonTechniqueProposalId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('forbidden new status'),
@@ -601,10 +641,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: draftId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: draftId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('forbidden new status'),
@@ -627,10 +670,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: expiredId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: expiredId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('forbidden new status'),
@@ -653,10 +699,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: submittedId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: submittedId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('forbidden new status'),
@@ -679,10 +728,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: finishedId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: finishedId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         message: expect.stringContaining('forbidden status transition'),
@@ -705,10 +757,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyInstrumentScientist, {
-        statusId: underReviewId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyInstrumentScientist,
+        {
+          statusId: underReviewId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         proposals: expect.arrayContaining([
@@ -740,10 +795,13 @@ describe('Test Xpress change status', () => {
     ]);
 
     return expect(
-      proposalMutations.changeXpressProposalsStatus(dummyUserOfficerWithRole, {
-        statusId: draftId,
-        proposalPks: [1, 2],
-      })
+      proposalMutations.changeTechniqueProposalsStatus(
+        dummyUserOfficerWithRole,
+        {
+          statusId: draftId,
+          proposalPks: [1, 2],
+        }
+      )
     ).resolves.toEqual(
       expect.objectContaining({
         proposals: expect.arrayContaining([

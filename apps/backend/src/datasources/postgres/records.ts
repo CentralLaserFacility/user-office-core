@@ -8,20 +8,20 @@ import {
   DependenciesLogicOperator,
   EvaluatorOperator,
 } from '../../models/ConditionEvaluator';
+import { CoProposerClaim } from '../../models/CoProposerClaim';
 import { Country } from '../../models/Country';
+import { ExperimentStatus } from '../../models/Experiment';
 import { Fap, FapAssignment, FapProposal, FapReviewer } from '../../models/Fap';
 import { FapMeetingDecision } from '../../models/FapMeetingDecision';
 import { Feature, FeatureId } from '../../models/Feature';
-import { Feedback } from '../../models/Feedback';
-import { FeedbackRequest } from '../../models/FeedbackRequest';
 import { GenericTemplate } from '../../models/GenericTemplate';
 import { Institution } from '../../models/Institution';
 import { Instrument } from '../../models/Instrument';
+import { Invite } from '../../models/Invite';
 import { PdfTemplate } from '../../models/PdfTemplate';
 import { PredefinedMessage } from '../../models/PredefinedMessage';
 import { Proposal, ProposalEndStatus } from '../../models/Proposal';
 import { ProposalInternalComment } from '../../models/ProposalInternalComment';
-import { ProposalStatusActionType } from '../../models/ProposalStatusAction';
 import { ProposalView } from '../../models/ProposalView';
 import { Quantity } from '../../models/Quantity';
 import { AnswerBasic, Questionary } from '../../models/Questionary';
@@ -33,11 +33,11 @@ import {
 import { RedeemCode } from '../../models/RedeemCode';
 import { Review } from '../../models/Review';
 import { Role } from '../../models/Role';
+import { RoleClaim } from '../../models/RoleClaim';
 import { Sample } from '../../models/Sample';
-import { SampleExperimentSafetyInput } from '../../models/SampleExperimentSafetyInput';
-import { ScheduledEventCore } from '../../models/ScheduledEventCore';
 import { Settings, SettingsId } from '../../models/Settings';
 import { Shipment, ShipmentStatus } from '../../models/Shipment';
+import { StatusActionType } from '../../models/StatusAction';
 import { StatusActionsLog } from '../../models/StatusActionsLog';
 import { TechnicalReview } from '../../models/TechnicalReview';
 import { Technique } from '../../models/Technique';
@@ -55,12 +55,12 @@ import {
 } from '../../models/Template';
 import { Unit } from '../../models/Unit';
 import { BasicUserDetails, User } from '../../models/User';
-import { Visit, VisitStatus } from '../../models/Visit';
-import { VisitRegistration } from '../../models/VisitRegistration';
+import { Visit } from '../../models/Visit';
 import {
-  ProposalBookingStatusCore,
-  ScheduledEventBookingType,
-} from '../../resolvers/types/ProposalBooking';
+  VisitRegistration,
+  VisitRegistrationStatus,
+} from '../../models/VisitRegistration';
+import { WorkflowType } from '../../models/Workflow';
 import {
   FapInstrument,
   ProposalViewFap,
@@ -68,7 +68,6 @@ import {
   ProposalViewTechnicalReview,
   ProposalViewTechnique,
 } from '../../resolvers/types/ProposalView';
-import { ExperimentSafetyInput } from './../../models/ExperimentSafetyInput';
 import { FeedbackStatus } from './../../models/Feedback';
 
 // Adds types to datasources: https://knexjs.org/guide/#typescript
@@ -104,18 +103,6 @@ export interface QuestionaryRecord {
   readonly template_id: number;
   readonly creator_id: number;
   readonly created_at: Date;
-}
-
-export interface ScheduledEventRecord {
-  readonly scheduled_event_id: number;
-  readonly booking_type: ScheduledEventBookingType;
-  readonly starts_at: Date;
-  readonly ends_at: Date;
-  readonly proposal_booking_id: number;
-  readonly proposal_pk: number;
-  readonly status: ProposalBookingStatusCore;
-  readonly local_contact: number | null;
-  readonly instrument_id: number;
 }
 
 export interface ProposalRecord {
@@ -188,6 +175,7 @@ export interface QuestionRecord {
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly natural_key: string;
+  readonly full_count: number;
 }
 
 export interface AnswerRecord {
@@ -237,7 +225,6 @@ export interface UserRecord {
   readonly user_id: number;
   readonly user_title: string;
   readonly firstname: string;
-  readonly middlename: string;
   readonly lastname: string;
   readonly username: string;
   readonly preferredname: string;
@@ -245,13 +232,11 @@ export interface UserRecord {
   readonly oauth_refresh_token: string | null;
   readonly oauth_issuer: string | null;
   readonly gender: string;
-  readonly nationality: number;
   readonly birthdate: Date;
   readonly department: string;
   readonly position: string;
   readonly email: string;
   readonly telephone: string;
-  readonly telephone_alt: string;
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly full_count: number;
@@ -264,16 +249,16 @@ export interface VisitRegistrationRecord {
   user_id: number;
   visit_id: number;
   registration_questionary_id: number | null;
-  is_registration_submitted: boolean;
-  training_expiry_date: Date | null;
   starts_at: Date | null;
   ends_at: Date | null;
+  status: string;
 }
 
 export interface RoleRecord {
   readonly role_id: number;
   readonly short_code: string;
   readonly title: string;
+  readonly description: string;
 }
 
 export interface ReviewRecord {
@@ -286,6 +271,11 @@ export interface ReviewRecord {
   readonly fap_id: number;
   readonly questionary_id: number;
   readonly full_count: number;
+  readonly date_assigned: Date;
+  readonly reassigned: boolean;
+  readonly date_reassigned: Date;
+  readonly email_sent: boolean;
+  readonly rank: number | null;
 }
 
 export interface TechnicalReviewRecord {
@@ -300,6 +290,7 @@ export interface TechnicalReviewRecord {
   readonly files: string;
   readonly technical_review_assignee_id: number | null;
   readonly instrument_id: number;
+  readonly questionary_id: number;
 }
 
 export interface InternalReviewRecord {
@@ -344,17 +335,13 @@ export interface CallRecord {
   readonly description: string;
   readonly pdf_template_id: number;
   readonly fap_review_template_id: number;
+  readonly technical_review_template_id: number;
   readonly is_active: boolean;
 }
 
 export interface PageTextRecord {
   readonly pagetext_id: number;
   readonly content: string;
-}
-
-export interface NationalityRecord {
-  readonly nationality_id: number;
-  readonly nationality: string;
 }
 
 export interface InstitutionRecord {
@@ -489,6 +476,7 @@ export interface InstrumentRecord {
   readonly description: string;
   readonly manager_user_id: number;
   readonly full_count: number;
+  readonly selectable: boolean;
 }
 
 export interface InstrumentHasProposalRecord {
@@ -550,7 +538,7 @@ export interface SampleRecord {
 }
 
 export interface ShipmentRecord {
-  readonly scheduled_event_id: number;
+  readonly experiment_pk: number;
   readonly shipment_id: number;
   readonly title: string;
   readonly creator_id: number;
@@ -561,36 +549,38 @@ export interface ShipmentRecord {
   readonly created_at: Date;
 }
 
-export interface ProposalStatusRecord {
-  readonly proposal_status_id: number;
+export interface StatusRecord {
+  readonly status_id: number;
   readonly short_code: string;
   readonly name: string;
   readonly description: string;
   readonly is_default: boolean;
   readonly full_count: number;
+  readonly entity_type: WorkflowType;
 }
 
-export interface ProposalWorkflowRecord {
-  readonly proposal_workflow_id: number;
+export interface WorkflowRecord {
+  readonly workflow_id: number;
   readonly name: string;
   readonly description: string;
   readonly full_count: number;
+  readonly entity_type: WorkflowType;
 }
 
-export interface ProposalWorkflowConnectionRecord {
-  readonly proposal_workflow_connection_id: number;
+export interface WorkflowConnectionRecord {
+  readonly workflow_connection_id: number;
   readonly sort_order: number;
-  readonly proposal_workflow_id: number;
-  readonly proposal_status_id: number;
-  readonly next_proposal_status_id: number | null;
-  readonly prev_proposal_status_id: number | null;
+  readonly workflow_id: number;
+  readonly status_id: number;
+  readonly next_status_id: number | null;
+  readonly prev_status_id: number | null;
   readonly droppable_group_id: string;
   readonly parent_droppable_group_id: string;
 }
 
 export interface StatusChangingEventRecord {
   readonly status_changing_event_id: number;
-  readonly proposal_workflow_connection_id: number;
+  readonly workflow_connection_id: number;
   readonly status_changing_event: string;
 }
 
@@ -677,21 +667,11 @@ export interface VisitRecord {
   readonly visit_id: number;
   readonly proposal_pk: number;
   readonly instrument_id: number;
-  readonly status: string;
   readonly questionary_id: number;
   readonly creator_id: number;
   readonly team_lead_user_id: number;
-  readonly scheduled_event_id: number;
   readonly created_at: Date;
-}
-
-export interface EsiRecord {
-  readonly esi_id: number;
-  readonly scheduled_event_id: number;
-  readonly creator_id: number;
-  readonly questionary_id: number;
-  readonly is_submitted: boolean;
-  readonly created_at: Date;
+  readonly experiment_pk: number;
 }
 
 export interface GenericTemplateRecord {
@@ -704,13 +684,6 @@ export interface GenericTemplateRecord {
   readonly created_at: Date;
 }
 
-export interface SampleEsiRecord {
-  readonly esi_id: number;
-  readonly sample_id: number;
-  readonly questionary_id: number;
-  readonly is_submitted: boolean;
-}
-
 export interface TemplateGroupRecord {
   readonly template_group_id: string;
   readonly category_id: number;
@@ -718,7 +691,7 @@ export interface TemplateGroupRecord {
 
 export interface FeedbackRecord {
   readonly feedback_id: number;
-  readonly scheduled_event_id: number;
+  readonly experiment_pk: number;
   readonly status: FeedbackStatus;
   readonly questionary_id: number;
   readonly creator_id: number;
@@ -728,7 +701,7 @@ export interface FeedbackRecord {
 
 export interface FeedbackRequestRecord {
   readonly feedback_request_id: number;
-  readonly scheduled_event_id: number;
+  readonly experiment_pk: number;
   readonly requested_at: Date;
 }
 
@@ -745,14 +718,14 @@ export interface RedeemCodeRecord {
   readonly claimed_at: Date | null;
 }
 
-export interface ProposalStatusActionRecord {
-  readonly proposal_status_action_id: number;
+export interface StatusActionRecord {
+  readonly status_action_id: number;
   readonly name: string;
   readonly description: string;
-  readonly type: ProposalStatusActionType;
+  readonly type: StatusActionType;
 }
 
-export interface ProposalWorkflowConnectionHasActionsRecord {
+export interface WorkflowConnectionHasActionsRecord {
   readonly connection_id: number;
   readonly action_id: number;
   readonly workflow_id: number;
@@ -828,7 +801,12 @@ export const createReviewObject = (review: ReviewRecord) => {
     review.grade,
     review.status,
     review.fap_id,
-    review.questionary_id
+    review.questionary_id,
+    review.date_assigned,
+    review.reassigned,
+    review.date_reassigned,
+    review.email_sent,
+    review.rank
   );
 };
 
@@ -838,7 +816,8 @@ export const createInstrumentObject = (instrument: InstrumentRecord) => {
     instrument.name,
     instrument.short_code,
     instrument.description,
-    instrument.manager_user_id
+    instrument.manager_user_id,
+    instrument.selectable
   );
 };
 
@@ -856,7 +835,8 @@ export const createTechnicalReviewObject = (
     technicalReview.reviewer_id,
     technicalReview.files ? JSON.stringify(technicalReview.files) : null,
     technicalReview.technical_review_assignee_id,
-    technicalReview.instrument_id
+    technicalReview.instrument_id,
+    technicalReview.questionary_id
   );
 };
 
@@ -951,7 +931,6 @@ export const createUserObject = (user: UserRecord) => {
     user.user_id,
     user.user_title,
     user.firstname,
-    user.middlename,
     user.lastname,
     user.username,
     user.preferredname,
@@ -959,7 +938,6 @@ export const createUserObject = (user: UserRecord) => {
     user.oauth_refresh_token,
     user.oauth_issuer,
     user.gender,
-    user.nationality,
     user.birthdate,
     user.institution_id,
     user.institution,
@@ -967,7 +945,6 @@ export const createUserObject = (user: UserRecord) => {
     user.position,
     user.email,
     user.telephone,
-    user.telephone_alt,
     user.placeholder,
     user.created_at.toISOString(),
     user.updated_at.toISOString()
@@ -996,13 +973,12 @@ export const createVisitRegistrationObject = (
   record: VisitRegistrationRecord
 ) => {
   return new VisitRegistration(
-    record.user_id,
     record.visit_id,
+    record.user_id,
     record.registration_questionary_id,
-    record.is_registration_submitted,
     record.starts_at,
     record.ends_at,
-    record.training_expiry_date
+    record.status as VisitRegistrationStatus
   );
 };
 
@@ -1038,6 +1014,7 @@ export const createCallObject = (call: CallRecord) => {
     call.description,
     call.pdf_template_id,
     call.fap_review_template_id,
+    call.technical_review_template_id,
     call.is_active
   );
 };
@@ -1105,7 +1082,7 @@ export const createShipmentObject = (shipment: ShipmentRecord) => {
     shipment.creator_id,
     shipment.proposal_pk,
     shipment.questionary_id,
-    shipment.scheduled_event_id,
+    shipment.experiment_pk,
     shipment.status as ShipmentStatus,
     shipment.external_ref,
     shipment.created_at
@@ -1171,12 +1148,10 @@ export const createFapProposalObject = (fapProposal: FapProposalRecord) => {
     fapProposal.fap_meeting_instrument_submitted
   );
 };
-export const createFapAssignmentObject = (
-  fapAssignment: FapAssignmentRecord
-) => {
+export const createFapAssignmentObject = (fapAssignment: ReviewRecord) => {
   return new FapAssignment(
     fapAssignment.proposal_pk,
-    fapAssignment.fap_member_user_id,
+    fapAssignment.user_id,
     fapAssignment.fap_id,
     fapAssignment.date_assigned,
     fapAssignment.reassigned,
@@ -1191,29 +1166,17 @@ export const createFapReviewerObject = (fapMember: FapReviewerRecord) => {
 };
 
 export const createRoleObject = (role: RoleRecord) => {
-  return new Role(role.role_id, role.short_code, role.title);
+  return new Role(role.role_id, role.short_code, role.title, role.description);
 };
 
 export const createVisitObject = (visit: VisitRecord) => {
   return new Visit(
     visit.visit_id,
     visit.proposal_pk,
-    visit.status as any as VisitStatus,
     visit.creator_id,
     visit.team_lead_user_id,
-    visit.scheduled_event_id,
-    visit.created_at
-  );
-};
-
-export const createEsiObject = (esi: EsiRecord) => {
-  return new ExperimentSafetyInput(
-    esi.esi_id,
-    esi.scheduled_event_id,
-    esi.creator_id,
-    esi.questionary_id,
-    esi.is_submitted,
-    esi.created_at
+    visit.created_at,
+    visit.experiment_pk
   );
 };
 
@@ -1228,15 +1191,6 @@ export const createGenericTemplateObject = (
     genericTemplate.questionary_id,
     genericTemplate.question_id,
     genericTemplate.created_at
-  );
-};
-
-export const createSampleEsiObject = (esi: SampleEsiRecord) => {
-  return new SampleExperimentSafetyInput(
-    esi.esi_id,
-    esi.sample_id,
-    esi.questionary_id,
-    esi.is_submitted
   );
 };
 
@@ -1259,41 +1213,6 @@ export const createInstitutionObject = (institution: InstitutionRecord) => {
 export const createCountryObject = (country: CountryRecord) => {
   return new Country(country.country_id, country.country);
 };
-
-export const createScheduledEventObject = (
-  scheduledEvent: ScheduledEventRecord
-) =>
-  new ScheduledEventCore(
-    scheduledEvent.scheduled_event_id,
-    scheduledEvent.booking_type,
-    scheduledEvent.starts_at,
-    scheduledEvent.ends_at,
-    scheduledEvent.proposal_pk,
-    scheduledEvent.proposal_booking_id,
-    scheduledEvent.status,
-    scheduledEvent.local_contact,
-    scheduledEvent.instrument_id
-  );
-
-export const createFeedbackObject = (scheduledEvent: FeedbackRecord) =>
-  new Feedback(
-    scheduledEvent.feedback_id,
-    scheduledEvent.scheduled_event_id,
-    scheduledEvent.status,
-    scheduledEvent.questionary_id,
-    scheduledEvent.creator_id,
-    scheduledEvent.created_at,
-    scheduledEvent.submitted_at
-  );
-
-export const createFeedbackRequestObject = (
-  feedbackRequest: FeedbackRequestRecord
-) =>
-  new FeedbackRequest(
-    feedbackRequest.feedback_request_id,
-    feedbackRequest.scheduled_event_id,
-    feedbackRequest.requested_at
-  );
 
 export const createUnitObject = (unit: UnitRecord) =>
   new Unit(
@@ -1417,3 +1336,81 @@ export const createProposalInternalCommentObject = (
     proposalInternalComment.comment
   );
 };
+
+export interface InviteRecord {
+  readonly invite_id: number;
+  readonly code: string;
+  readonly email: string;
+  readonly created_by: number;
+  readonly created_at: Date;
+  readonly claimed_by: number | null;
+  readonly claimed_at: Date | null;
+  readonly is_email_sent: boolean;
+  readonly expires_at: Date | null;
+}
+
+export const createInviteObject = (invite: InviteRecord) =>
+  new Invite(
+    invite.invite_id,
+    invite.code,
+    invite.email,
+    invite.created_at,
+    invite.created_by,
+    invite.claimed_at,
+    invite.claimed_by,
+    invite.is_email_sent,
+    invite.expires_at
+  );
+
+export interface RoleClaimRecord {
+  readonly role_claim_id: number;
+  readonly invite_id: number;
+  readonly role_id: number;
+}
+
+export const createRoleClaimObject = (invite: RoleClaimRecord) =>
+  new RoleClaim(invite.role_claim_id, invite.invite_id, invite.role_id);
+
+export interface CoProposerClaimRecord {
+  readonly invite_id: number;
+  readonly proposal_pk: number;
+}
+
+export const createCoProposerClaimRecord = (invite: CoProposerClaimRecord) =>
+  new CoProposerClaim(invite.invite_id, invite.proposal_pk);
+
+export interface ExperimentRecord {
+  readonly experiment_pk: number;
+  readonly experiment_id: string;
+  readonly starts_at: Date;
+  readonly ends_at: Date;
+  readonly scheduled_event_id: number;
+  readonly proposal_pk: number;
+  readonly status: ExperimentStatus;
+  readonly local_contact_id: number;
+  readonly instrument_id: number;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+}
+
+export interface ExperimentSafetyRecord {
+  readonly experiment_safety_pk: number;
+  readonly experiment_pk: number;
+  readonly esi_questionary_id: number;
+  readonly esi_questionary_submitted_at: Date;
+  readonly created_by: number;
+  readonly status: string;
+  readonly safety_review_questionary_id: number;
+  readonly reviewed_by: number;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+}
+
+export interface ExperimentHasSampleRecord {
+  readonly experiment_pk: number;
+  readonly sample_id: number;
+  readonly is_esi_submitted: boolean;
+  readonly sample_esi_questionary_id: number;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+}

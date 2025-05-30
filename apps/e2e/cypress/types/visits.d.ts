@@ -1,4 +1,11 @@
-import { CreateVisitMutationVariables } from '@user-office-software-libs/shared-types';
+import {
+  ApproveVisitRegistrationMutation,
+  ApproveVisitRegistrationMutationVariables,
+  CreateVisitMutationVariables,
+  CreateVisitRegistrationMutation,
+  SubmitVisitRegistrationMutation,
+  SubmitVisitRegistrationMutationVariables,
+} from '@user-office-software-libs/shared-types';
 
 declare global {
   namespace Cypress {
@@ -15,7 +22,58 @@ declare global {
        *    teamLead: 'Carlsson',
        * });
        */
-      createVisit: (createVisitInput: CreateVisitMutationVariables) => void;
+      createVisit: (
+        createVisitInput: CreateVisitMutationVariables
+      ) => Cypress.Chainable<CreateVisitMutation>;
+      /**
+       * Create visit registration
+       *
+       * @returns {typeof createVisitRegistration}
+       * @memberof Chainable
+       * @example
+       * cy.createVisitRegistration({
+       *    visitId: visitId,
+       *    userId: userId,
+       * });
+       */
+      createVisitRegistration: (
+        input: CreateVisitRegistrationMutationVariables
+      ) => Cypress.Chainable<CreateVisitRegistrationMutation>;
+
+      /**
+       * Submit visit registration
+       *
+       * @returns {typeof submitVisitRegistration}
+       * @memberof Chainable
+       * @example
+       * cy.submitVisitRegistration({
+       *    visitId: visitId,
+       *    userId: userId,
+       * });
+       */
+      submitVisitRegistration: (
+        input: SubmitVisitRegistrationMutationVariables
+      ) => Cypress.Chainable<SubmitVisitRegistrationMutation>;
+
+      /**
+       * Approve visit registration
+       *
+       * @returns {typeof approveVisitRegistration}
+       * @memberof Chainable
+       * @example
+       * cy.approveVisitRegistration({
+       *    visitId: visitId,
+       *    userId: userId,
+       *    input: {
+       *      visitRegistrationId: visitRegistrationId,
+       *      visitRegistrationStatus: VisitRegistrationStatus.APPROVED,
+       *     },
+       * });
+       *
+       */
+      approveVisitRegistration: (
+        input: ApproveVisitRegistrationMutationVariables
+      ) => Cypress.Chainable<ApproveVisitRegistrationMutation>;
     }
   }
 }

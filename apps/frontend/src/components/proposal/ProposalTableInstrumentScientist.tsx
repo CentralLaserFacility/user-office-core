@@ -7,6 +7,7 @@ import {
 import DoneAll from '@mui/icons-material/DoneAll';
 import Edit from '@mui/icons-material/Edit';
 import GetAppIcon from '@mui/icons-material/GetApp';
+import ReduceCapacityIcon from '@mui/icons-material/ReduceCapacity';
 import Visibility from '@mui/icons-material/Visibility';
 import { Box, Button, Dialog, DialogContent, Grid } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
@@ -25,6 +26,9 @@ import ProposalReviewModal from 'components/review/ProposalReviewModal';
 import ReviewerFilterComponent, {
   reviewFilter,
 } from 'components/review/ReviewerFilter';
+import TechnicalBulkReassignModal, {
+  ReviewData,
+} from 'components/review/TechnicalBulkReassignModal';
 import { FeatureContext } from 'context/FeatureContextProvider';
 import { SettingsContext } from 'context/SettingsContextProvider';
 import { UserContext } from 'context/UserContextProvider';
@@ -37,6 +41,7 @@ import {
   SettingsId,
   UserRole,
   ProposalViewTechnicalReviewAssignee,
+  WorkflowType,
 } from 'generated/sdk';
 import { useInstrumentScientistCallsData } from 'hooks/call/useInstrumentScientistCallsData';
 import { useCheckAccess } from 'hooks/common/useCheckAccess';
@@ -48,7 +53,7 @@ import {
   ProposalViewData,
   useProposalsCoreData,
 } from 'hooks/proposal/useProposalsCoreData';
-import { useProposalStatusesData } from 'hooks/settings/useProposalStatusesData';
+import { useStatusesData } from 'hooks/settings/useStatusesData';
 import {
   addColumns,
   fromArrayToCommaSeparated,
@@ -71,8 +76,9 @@ import TableActionsDropdownMenu, {
 
 type QueryParameters = {
   query: {
-    first?: number;
+    first: number;
     offset?: number;
+    refetch: boolean;
   };
   searchText?: string | undefined;
 };
@@ -329,13 +335,16 @@ const ProposalTableInstrumentScientist = ({
     query: {
       first: PREFETCH_SIZE,
       offset: 0,
+      refetch: false,
     },
     searchText: search ?? undefined,
   });
   const { instruments, loadingInstruments } = useInstrumentsMinimalData();
   const { calls, loadingCalls } = useInstrumentScientistCallsData(user.id);
-  const { proposalStatuses, loadingProposalStatuses } =
-    useProposalStatusesData();
+  const {
+    statuses: proposalStatuses,
+    loadingStatuses: loadingProposalStatuses,
+  } = useStatusesData(WorkflowType.PROPOSAL);
 
   const { loading, proposalsData, totalCount, setProposalsData } =
     useProposalsCoreData(
@@ -353,6 +362,7 @@ const ProposalTableInstrumentScientist = ({
     );
 
   const [tableData, setTableData] = useState<ProposalViewData[]>([]);
+  const [bulkReassignData, setBulkReassignData] = useState<ReviewData[]>([]);
   const [preselectedProposalsData, setPreselectedProposalsData] = useState<
     ProposalViewData[]
   >([]);
@@ -598,6 +608,7 @@ const ProposalTableInstrumentScientist = ({
   ) => {
     setActionsMenuAnchorElement(event.currentTarget);
   };
+
   const handleClose = (selectedOption: string) => {
     if (selectedOption === PdfDownloadMenuOption.PDF) {
       downloadPDFProposal(
@@ -658,6 +669,38 @@ const ProposalTableInstrumentScientist = ({
     )();
   };
 
+  const handleBulkTechnicalReviewsReassign = () => {
+    const currentUserAssignedSelectTechReviews: ReviewData[] = [];
+
+    for (const proposal of selectedProposals) {
+      const { technicalReviews } = proposal;
+      if (technicalReviews?.length) {
+        for (const techReview of technicalReviews) {
+          const instrument = proposal.instruments?.find(
+            (inst) => inst.id === techReview.instrumentId
+          );
+
+          if (
+            instrument &&
+            (techReview.technicalReviewAssignee?.id === user.id ||
+              instrument?.managerUserId === user.id)
+          ) {
+            currentUserAssignedSelectTechReviews.push({
+              review: techReview,
+              instrument: instrument,
+              proposal: {
+                proposalPk: proposal.primaryKey,
+                proposalId: proposal.proposalId,
+                title: proposal.title,
+              },
+            });
+          }
+        }
+      }
+    }
+    setBulkReassignData(currentUserAssignedSelectTechReviews);
+  };
+
   // NOTE: We are remapping only the hidden field because functions like `render` can not be stringified.
   if (localStorageValue) {
     columns = columns.map((column) => ({
@@ -692,6 +735,9 @@ const ProposalTableInstrumentScientist = ({
   );
   const DoneAllIcon = (): JSX.Element => (
     <DoneAll data-cy="submit-proposal-reviews" />
+  );
+  const ReduceCapacityIconComponent = (): JSX.Element => (
+    <ReduceCapacityIcon data-cy="bulk-reassign-reviews" />
   );
 
   const proposalToReview = preselectedProposalsData.find(
@@ -761,6 +807,12 @@ const ProposalTableInstrumentScientist = ({
       onClick: handleBulkTechnicalReviewsSubmit,
       position: 'toolbarOnSelect',
     });
+    tableActions.push({
+      icon: ReduceCapacityIconComponent,
+      tooltip: 'Reassign selected Techniqual Reviews',
+      onClick: handleBulkTechnicalReviewsReassign,
+      position: 'toolbarOnSelect',
+    });
   }
 
   return (
@@ -784,6 +836,7 @@ const ProposalTableInstrumentScientist = ({
                         status: technicalReview.status,
                         submitted: technicalReview.submitted,
                         timeAllocation: technicalReview.timeAllocation,
+                        instrumentId: technicalReview.instrumentId,
                         technicalReviewAssignee: technicalReviewAssignee,
                       };
                     }
@@ -848,6 +901,36 @@ const ProposalTableInstrumentScientist = ({
         event={actionsMenuAnchorElement}
         handleClose={handleClose}
       />
+      {!!bulkReassignData.length && (
+        <TechnicalBulkReassignModal
+          reviews={bulkReassignData}
+          setReviews={(refetch, resetSelection) => {
+            setBulkReassignData([]);
+            refetch &&
+              setQueryParameters({
+                query: {
+                  ...queryParameters.query,
+                  refetch: !queryParameters.query.refetch,
+                },
+                searchText: queryParameters.searchText,
+              });
+            resetSelection &&
+              setSearchParams((searchParam) => {
+                searchParam.delete('selection');
+
+                return searchParam;
+              });
+          }}
+          instrumentIds={Array.from(
+            new Set(bulkReassignData.map((rev) => rev.instrument.id))
+          )}
+          removeReview={(reviewId) =>
+            setBulkReassignData(
+              bulkReassignData.filter((rev) => rev.review.id !== reviewId)
+            )
+          }
+        ></TechnicalBulkReassignModal>
+      )}
       {isInstrumentScientist && (
         <Grid container spacing={2}>
           <Grid item sm={2} xs={12}>
@@ -882,17 +965,12 @@ const ProposalTableInstrumentScientist = ({
           Toolbar: ToolbarWithSelectAllPrefetched,
         }}
         onPageChange={(page, pageSize) => {
-          const newOffset =
-            Math.floor((pageSize * page) / PREFETCH_SIZE) * PREFETCH_SIZE;
-          if (
-            page !== currentPage &&
-            newOffset != queryParameters.query.offset
-          ) {
+          if ((page + 1) * pageSize >= queryParameters.query.first) {
             setQueryParameters({
               searchText: queryParameters.searchText,
               query: {
                 ...queryParameters.query,
-                offset: newOffset,
+                first: queryParameters.query.first + PREFETCH_SIZE,
               },
             });
           }

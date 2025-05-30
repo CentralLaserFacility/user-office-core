@@ -74,18 +74,15 @@ export default class PostgresUserDataSource implements UserDataSource {
     const {
       firstname,
       user_title,
-      middlename,
       lastname,
       preferredname,
       gender,
-      nationality,
       birthdate,
       institutionId,
       department,
       position,
       email,
       telephone,
-      telephone_alt,
       placeholder,
       oidcSub,
       oauthRefreshToken,
@@ -96,18 +93,15 @@ export default class PostgresUserDataSource implements UserDataSource {
       .update({
         firstname,
         user_title,
-        middlename,
         lastname,
         preferredname,
         gender,
-        nationality,
         birthdate,
         institution_id: institutionId,
         department,
         position,
         email,
         telephone,
-        telephone_alt,
         placeholder,
         oidc_sub: oidcSub,
         oauth_refresh_token: oauthRefreshToken,
@@ -126,7 +120,6 @@ export default class PostgresUserDataSource implements UserDataSource {
       .insert({
         user_title: '',
         firstname,
-        middlename: '',
         lastname,
         username: email,
         preferredname: firstname,
@@ -134,14 +127,12 @@ export default class PostgresUserDataSource implements UserDataSource {
         oauth_refresh_token: '',
         oauth_issuer: '',
         gender: '',
-        nationality: null,
         birthdate: '2000-01-01',
         institution_id: 1,
         department: '',
         position: '',
         email,
         telephone: '',
-        telephone_alt: '',
         placeholder: true,
       })
       .returning(['*'])
@@ -154,7 +145,15 @@ export default class PostgresUserDataSource implements UserDataSource {
       .select()
       .from('roles')
       .then((roles: RoleRecord[]) =>
-        roles.map((role) => new Role(role.role_id, role.short_code, role.title))
+        roles.map(
+          (role) =>
+            new Role(
+              role.role_id,
+              role.short_code,
+              role.title,
+              role.description
+            )
+        )
       );
   }
 
@@ -166,7 +165,15 @@ export default class PostgresUserDataSource implements UserDataSource {
       .join('users as u', { 'u.user_id': 'rc.user_id' })
       .where('u.user_id', id)
       .then((roles: RoleRecord[]) =>
-        roles.map((role) => new Role(role.role_id, role.short_code, role.title))
+        roles.map(
+          (role) =>
+            new Role(
+              role.role_id,
+              role.short_code,
+              role.title,
+              role.description
+            )
+        )
       );
   }
 
@@ -239,6 +246,18 @@ export default class PostgresUserDataSource implements UserDataSource {
       );
   }
 
+  async getBasicUsersInfo(ids: readonly number[]): Promise<BasicUserDetails[]> {
+    return database
+      .select()
+      .from('users as u')
+      .join('institutions as i', { 'u.institution_id': 'i.institution_id' })
+      .whereIn('u.user_id', ids)
+      .then(
+        (usersRecord: Array<UserRecord & InstitutionRecord & CountryRecord>) =>
+          usersRecord.map((user) => createBasicUserObject(user))
+      );
+  }
+
   async getBasicUserDetailsByEmail(
     email: string,
     role?: UserRole
@@ -296,7 +315,6 @@ export default class PostgresUserDataSource implements UserDataSource {
   async create(
     user_title: string | undefined,
     firstname: string,
-    middlename: string | undefined,
     lastname: string,
     username: string,
     preferredname: string | undefined,
@@ -304,20 +322,17 @@ export default class PostgresUserDataSource implements UserDataSource {
     oauth_refresh_token: string,
     oauth_issuer: string,
     gender: string,
-    nationality: number,
     birthdate: Date,
     institution_id: number,
     department: string,
     position: string,
     email: string,
-    telephone: string,
-    telephone_alt: string | undefined
+    telephone: string
   ): Promise<User> {
     return database
       .insert({
         user_title,
         firstname,
-        middlename,
         lastname,
         username,
         preferredname,
@@ -325,14 +340,12 @@ export default class PostgresUserDataSource implements UserDataSource {
         oauth_refresh_token,
         oauth_issuer,
         gender,
-        nationality,
         birthdate,
         institution_id,
         department,
         position,
         email,
         telephone,
-        telephone_alt,
       })
       .returning(['*'])
       .into('users')
@@ -392,21 +405,18 @@ export default class PostgresUserDataSource implements UserDataSource {
       user_id: userId,
       user_title: '',
       firstname: '',
-      middlename: '',
       lastname: '',
       username: userId.toString(),
       preferredname: '',
       oidc_sub: '',
       oauth_refresh_token: '',
       gender: '',
-      nationality: 1,
       birthdate: '2000-01-01',
       institution_id: 1,
       department: '',
       position: '',
       email: userId.toString(),
       telephone: '',
-      telephone_alt: '',
     };
   }
 
@@ -711,6 +721,25 @@ export default class PostgresUserDataSource implements UserDataSource {
     return !!proposal;
   }
 
+  async checkTechniqueScientistToProposal(
+    scientistId: number,
+    proposalPk: number
+  ): Promise<boolean> {
+    const proposal = await database
+      .select('*')
+      .from('proposals as p')
+      .join('technique_has_scientists as ths', {
+        'ths.user_id': scientistId,
+      })
+      .join('technique_has_proposals as thp', {
+        'thp.technique_id': 'ths.technique_id',
+      })
+      .where('thp.proposal_id', proposalPk)
+      .first();
+
+    return !!proposal;
+  }
+
   async getRoleByShortCode(roleShortCode: Roles): Promise<Role> {
     return database
       .select()
@@ -719,7 +748,7 @@ export default class PostgresUserDataSource implements UserDataSource {
       .first()
       .then(
         (role: RoleRecord) =>
-          new Role(role.role_id, role.short_code, role.title)
+          new Role(role.role_id, role.short_code, role.title, role.description)
       );
   }
 

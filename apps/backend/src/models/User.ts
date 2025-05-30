@@ -26,7 +26,6 @@ export class User {
     public id: number,
     public user_title: string,
     public firstname: string,
-    public middlename: string | undefined,
     public lastname: string,
     public username: string,
     public preferredname: string | undefined,
@@ -34,7 +33,6 @@ export class User {
     public oauthRefreshToken: string | null,
     public oauthIssuer: string | null,
     public gender: string,
-    public nationality: number,
     public birthdate: Date,
     public institutionId: number,
     public institution: string,
@@ -42,7 +40,6 @@ export class User {
     public position: string,
     public email: string,
     public telephone: string,
-    public telephone_alt: string | undefined,
     public placeholder: boolean,
     public created: string,
     public updated: string
@@ -66,7 +63,7 @@ export enum UserRole {
   FAP_SECRETARY,
   FAP_REVIEWER,
   INSTRUMENT_SCIENTIST,
-  SAMPLE_SAFETY_REVIEWER,
+  EXPERIMENT_SAFETY_REVIEWER,
   INTERNAL_REVIEWER,
 }
 
@@ -77,7 +74,7 @@ export const UserRoleShortCodeMap = {
   [UserRole.FAP_SECRETARY]: Roles.FAP_SECRETARY,
   [UserRole.FAP_REVIEWER]: Roles.FAP_REVIEWER,
   [UserRole.INSTRUMENT_SCIENTIST]: Roles.INSTRUMENT_SCIENTIST,
-  [UserRole.SAMPLE_SAFETY_REVIEWER]: Roles.SAMPLE_SAFETY_REVIEWER,
+  [UserRole.EXPERIMENT_SAFETY_REVIEWER]: Roles.EXPERIMENT_SAFETY_REVIEWER,
   [UserRole.INTERNAL_REVIEWER]: Roles.INTERNAL_REVIEWER,
 } as const;
 

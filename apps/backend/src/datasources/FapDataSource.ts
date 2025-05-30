@@ -71,7 +71,11 @@ export interface FapDataSource {
     userId: number,
     proposalPk: number
   ): Promise<boolean>;
-  getFapProposals(fapId: number, callId: number | null): Promise<FapProposal[]>;
+  getFapProposals(filter: {
+    fapId: number;
+    callId?: number | null;
+    instrumentId?: number | null;
+  }): Promise<FapProposal[]>;
   getFapUsersByProposalPkAndCallId(
     proposalPk: number,
     callId: number
@@ -79,7 +83,10 @@ export interface FapDataSource {
   getFapProposalCount(fapId: number): Promise<number>;
   getCurrentFapProposalCount(fapId: number): Promise<number>;
   getFapReviewerProposalCount(reviewerId: number): Promise<number>;
-  getCurrentFapReviewerProposalCount(reviewerId: number): Promise<number>;
+  getCurrentFapReviewerProposalCount(
+    reviewerId: number,
+    fapId: number
+  ): Promise<number>;
   getFapProposal(
     fapId: number,
     proposalPk: number,
@@ -127,6 +134,10 @@ export interface FapDataSource {
     userId: number,
     proposalPk: number
   ): Promise<boolean>;
+  isSecretaryForFapProposal(
+    userId: number,
+    proposalPk: number
+  ): Promise<boolean>;
   saveFapMeetingDecision(
     saveFapMeetingDecisionInput: SaveFapMeetingDecisionInput,
     submittedBy?: number | null
@@ -145,7 +156,7 @@ export interface FapDataSource {
     instrumentId?: number | null
   ): Promise<boolean>;
   setReviewerRank(
-    proposalPk: number,
+    fapReviewId: number,
     reviewerId: number,
     rank: number
   ): Promise<boolean>;

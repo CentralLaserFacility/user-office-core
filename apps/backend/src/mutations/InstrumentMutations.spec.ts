@@ -6,25 +6,25 @@ import {
   dummyInstrument,
   dummyInstrumentHasProposals,
 } from '../datasources/mockups/InstrumentDataSource';
-import { ProposalSettingsDataSourceMock } from '../datasources/mockups/ProposalSettingsDataSource';
+import { StatusDataSourceMock } from '../datasources/mockups/StatusDataSource';
 import { TechniqueDataSourceMock } from '../datasources/mockups/TechniqueDataSource';
 import {
   dummyInstrumentScientist,
   dummyUserOfficerWithRole,
   dummyUserWithRole,
 } from '../datasources/mockups/UserDataSource';
+import { WorkflowType } from '../models/Workflow';
 import InstrumentMutations from './InstrumentMutations';
 
-let proposalSettingsDataSource: ProposalSettingsDataSourceMock;
+let statusDataSource: StatusDataSourceMock;
 let techniqueDataSource: TechniqueDataSourceMock;
 
 const instrumentMutations = container.resolve(InstrumentMutations);
 
 beforeEach(() => {
-  proposalSettingsDataSource =
-    container.resolve<ProposalSettingsDataSourceMock>(
-      Tokens.ProposalSettingsDataSource
-    );
+  statusDataSource = container.resolve<StatusDataSourceMock>(
+    Tokens.StatusDataSource
+  );
   techniqueDataSource = container.resolve<TechniqueDataSourceMock>(
     Tokens.TechniqueDataSource
   );
@@ -59,6 +59,7 @@ describe('Test Instrument Mutations', () => {
       shortCode: '2020-06-15',
       description: 'Test instrument description',
       managerUserId: 1,
+      selectable: true,
     };
 
     return expect(
@@ -73,6 +74,8 @@ describe('Test Instrument Mutations', () => {
       shortCode: '2020-06-15',
       description: 'Test instrument description 1',
       managerUserId: 1,
+      updateTechReview: true,
+      selectable: true,
     };
 
     return expect(
@@ -193,24 +196,23 @@ describe('Test Instrument Mutations', () => {
     ).resolves.toBe(dummyInstrumentHasProposals);
   });
 
-  describe('Test Xpress instrument assignment', () => {
-    test('A user officer can change the instrument of an Xpress proposal from any status', () => {
+  describe('Test technique proposal instrument assignment', () => {
+    test('A user officer can change the instrument of a technique proposal from any status', () => {
       const proposal = { statusId: 1 };
 
-      jest
-        .spyOn(proposalSettingsDataSource, 'getAllProposalStatuses')
-        .mockResolvedValue([
-          {
-            id: proposal.statusId,
-            shortCode: 'EXPIRED',
-            name: 'Expired',
-            description: '',
-            isDefault: true,
-          },
-        ]);
+      jest.spyOn(statusDataSource, 'getAllStatuses').mockResolvedValue([
+        {
+          id: proposal.statusId,
+          shortCode: 'EXPIRED',
+          name: 'Expired',
+          description: '',
+          isDefault: true,
+          entityType: WorkflowType.PROPOSAL,
+        },
+      ]);
 
       return expect(
-        instrumentMutations.assignXpressProposalsToInstruments(
+        instrumentMutations.assignTechniqueProposalsToInstruments(
           dummyUserOfficerWithRole,
           {
             proposalPks: [1, 2],
@@ -225,23 +227,22 @@ describe('Test Instrument Mutations', () => {
       });
     });
 
-    test('A scientist cannot change the instrument of an Xpress proposal from any status', () => {
+    test('A scientist cannot change the instrument of a technique proposal from any status', () => {
       const proposal = { statusId: 1 };
 
-      jest
-        .spyOn(proposalSettingsDataSource, 'getAllProposalStatuses')
-        .mockResolvedValue([
-          {
-            id: proposal.statusId,
-            shortCode: 'EXPIRED',
-            name: 'Expired',
-            description: '',
-            isDefault: true,
-          },
-        ]);
+      jest.spyOn(statusDataSource, 'getAllStatuses').mockResolvedValue([
+        {
+          id: proposal.statusId,
+          shortCode: 'EXPIRED',
+          name: 'Expired',
+          description: '',
+          isDefault: true,
+          entityType: WorkflowType.PROPOSAL,
+        },
+      ]);
 
       return expect(
-        instrumentMutations.assignXpressProposalsToInstruments(
+        instrumentMutations.assignTechniqueProposalsToInstruments(
           dummyInstrumentScientist,
           {
             proposalPks: [1, 2],
@@ -255,23 +256,22 @@ describe('Test Instrument Mutations', () => {
       );
     });
 
-    test('A scientist can change the instrument of an Xpress proposal when the status is under review', () => {
+    test('A scientist can change the instrument of a technique proposal when the status is under review', () => {
       const proposal = { statusId: 1 };
 
-      jest
-        .spyOn(proposalSettingsDataSource, 'getAllProposalStatuses')
-        .mockResolvedValue([
-          {
-            id: proposal.statusId,
-            shortCode: 'UNDER_REVIEW',
-            name: 'Under review',
-            description: '',
-            isDefault: true,
-          },
-        ]);
+      jest.spyOn(statusDataSource, 'getAllStatuses').mockResolvedValue([
+        {
+          id: proposal.statusId,
+          shortCode: 'UNDER_REVIEW',
+          name: 'Under review',
+          description: '',
+          isDefault: true,
+          entityType: WorkflowType.PROPOSAL,
+        },
+      ]);
 
       return expect(
-        instrumentMutations.assignXpressProposalsToInstruments(
+        instrumentMutations.assignTechniqueProposalsToInstruments(
           dummyInstrumentScientist,
           {
             proposalPks: [1, 2],
@@ -300,7 +300,7 @@ describe('Test Instrument Mutations', () => {
         ]);
 
       return expect(
-        instrumentMutations.assignXpressProposalsToInstruments(
+        instrumentMutations.assignTechniqueProposalsToInstruments(
           dummyInstrumentScientist,
           {
             proposalPks: [1, 2],
@@ -330,7 +330,7 @@ describe('Test Instrument Mutations', () => {
         ]);
 
       return expect(
-        instrumentMutations.assignXpressProposalsToInstruments(
+        instrumentMutations.assignTechniqueProposalsToInstruments(
           dummyInstrumentScientist,
           {
             proposalPks: [1, 2],

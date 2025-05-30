@@ -2,10 +2,11 @@ import { faker } from '@faker-js/faker';
 import {
   AllocationTimeUnits,
   DataType,
-  TemplateCategoryId,
-  TemplateGroupId,
   FeatureId,
   SettingsId,
+  TemplateCategoryId,
+  TemplateGroupId,
+  WorkflowType,
 } from '@user-office-software-libs/shared-types';
 import { DateTime } from 'luxon';
 import PdfParse from 'pdf-parse';
@@ -68,6 +69,7 @@ context('Proposal tests', () => {
     templateName: initialDBData.template.name,
     templateId: initialDBData.template.id,
     fapReviewTemplateId: initialDBData.fapReviewTemplate.id,
+    technicalReviewTemplateId: initialDBData.technicalReviewTemplate.id,
     allocationTimeUnit: AllocationTimeUnits.DAY,
     cycleComment: faker.lorem.word(10),
     surveyComment: faker.lorem.word(10),
@@ -119,20 +121,20 @@ context('Proposal tests', () => {
         name: 'default esi template',
         groupId: TemplateGroupId.PROPOSAL_ESI,
       });
-      cy.createProposalWorkflow({
+      cy.createWorkflow({
         name: proposalWorkflow.name,
         description: proposalWorkflow.description,
+        entityType: WorkflowType.PROPOSAL,
       }).then((result) => {
-        if (result.createProposalWorkflow) {
-          cy.addProposalWorkflowStatus({
+        if (result.createWorkflow) {
+          cy.addWorkflowStatus({
             droppableGroupId: 'proposalWorkflowConnections_0',
-            proposalStatusId:
-              initialDBData.proposalStatuses.feasibilityReview.id,
-            proposalWorkflowId: result.createProposalWorkflow.id,
+            statusId: initialDBData.proposalStatuses.feasibilityReview.id,
+            workflowId: result.createWorkflow.id,
             sortOrder: 1,
-            prevProposalStatusId: 1,
+            prevStatusId: 1,
           });
-          createdWorkflowId = result.createProposalWorkflow.id;
+          createdWorkflowId = result.createWorkflow.id;
         }
       });
       cy.createProposal({ callId: initialDBData.call.id }).then((result) => {
@@ -146,6 +148,53 @@ context('Proposal tests', () => {
             proposerId: proposer.id,
           });
         }
+      });
+    });
+
+    it('Should be able clone proposal to another call', () => {
+      const CALL_TO_CLONE_SHORTCODE = 'CALL_TO_CLONE';
+      cy.createTemplate({
+        name: 'Another template',
+        groupId: TemplateGroupId.PROPOSAL,
+      }).then((result) => {
+        if (result.createTemplate) {
+          createdTemplateId = result.createTemplate.templateId;
+        } else {
+          throw new Error('Template creation failed');
+        }
+
+        cy.createCall({
+          ...newCall,
+          shortCode: CALL_TO_CLONE_SHORTCODE,
+          templateId: createdTemplateId,
+          proposalWorkflowId: createdWorkflowId,
+        });
+
+        cy.submitProposal({ proposalPk: createdProposalPk });
+
+        cy.login('user1', initialDBData.roles.user);
+        cy.visit('/');
+
+        cy.contains(newProposalTitle);
+
+        cy.get('[aria-label="Clone proposal"]').first().click();
+
+        cy.get('[data-cy="call-selection"]').click();
+
+        cy.get('[data-cy="call-selection-options"]')
+          .contains(CALL_TO_CLONE_SHORTCODE)
+          .click();
+
+        cy.get('[data-cy="submit"]').click();
+
+        cy.notification({
+          variant: 'success',
+          text: 'Proposal cloned successfully',
+        });
+
+        cy.contains(clonedProposalTitle)
+          .parent()
+          .should('contain.text', CALL_TO_CLONE_SHORTCODE);
       });
     });
 
@@ -207,16 +256,16 @@ context('Proposal tests', () => {
 
       cy.get('[data-cy="save-and-continue-button"]').focus().click();
 
-      cy.contains('Title is required');
-      cy.contains('Abstract is required');
+      cy.contains('Proposal Title is required');
+      cy.contains('Proposal Abstract is required');
 
       cy.get('[data-cy=title]').type(' ');
       cy.get('[data-cy=abstract]').type(' ');
 
       cy.get('[data-cy="save-and-continue-button"]').focus().click();
 
-      cy.contains('Title is required');
-      cy.contains('Abstract is required');
+      cy.contains('Proposal Title is required');
+      cy.contains('Proposal Abstract is required');
 
       cy.contains('New Proposal').click();
       cy.get('[data-cy=call-list]').find('li:first-child').click();
@@ -523,7 +572,7 @@ context('Proposal tests', () => {
         .contains('Feasible')
         .click();
 
-      cy.get('[data-cy="save-technical-review"]').click();
+      cy.get('[data-cy="save-button"]').focus().click();
 
       cy.closeModal();
 
@@ -1018,12 +1067,13 @@ context('Proposal tests', () => {
         groupId: TemplateGroupId.PROPOSAL_ESI,
       });
 
-      cy.createProposalWorkflow({
+      cy.createWorkflow({
         name: proposalInternalWorkflow.name,
         description: proposalInternalWorkflow.description,
+        entityType: WorkflowType.PROPOSAL,
       }).then((result) => {
-        if (result.createProposalWorkflow) {
-          createdWorkflowId = result.createProposalWorkflow.id;
+        if (result.createWorkflow) {
+          createdWorkflowId = result.createWorkflow.id;
         }
       });
     });
@@ -1064,8 +1114,8 @@ context('Proposal tests', () => {
 
       cy.get('[data-cy="save-and-continue-button"]').focus().click();
 
-      cy.contains('Title is required');
-      cy.contains('Abstract is required');
+      cy.contains('Proposal Title is required');
+      cy.contains('Proposal Abstract is required');
 
       cy.contains('New Proposal').click();
       cy.get('[data-cy=call-list]').find('li:first-child').click();
@@ -1415,6 +1465,12 @@ context('Proposal tests', () => {
       description: 'Instrument 2',
       managerUserId: initialDBData.users.user1.id,
     };
+    const instrument3 = {
+      name: 'Instrument 3',
+      shortCode: 'Instrument 3',
+      description: 'Instrument 3',
+      managerUserId: initialDBData.users.user1.id,
+    };
     let topicId: number;
     let instrumentPickerQuestionId: string;
 
@@ -1430,12 +1486,13 @@ context('Proposal tests', () => {
         name: 'Proposal Template with Instrument Picker',
         groupId: TemplateGroupId.PROPOSAL_ESI,
       });
-      cy.createProposalWorkflow({
+      cy.createWorkflow({
         name: proposalWorkflow.name,
         description: proposalWorkflow.description,
+        entityType: WorkflowType.PROPOSAL,
       }).then((result) => {
-        if (result.createProposalWorkflow) {
-          createdWorkflowId = result.createProposalWorkflow.id;
+        if (result.createWorkflow) {
+          createdWorkflowId = result.createWorkflow.id;
         }
       });
       cy.createInstrument(instrument).then((result) => {
@@ -1750,6 +1807,74 @@ context('Proposal tests', () => {
         'td',
         `${instrument2.name} (${time} ${AllocationTimeUnits.DAY})`
       ).should('exist');
+    });
+    it('Cloned proposal must not save if instrument is not available on new call but can be updated to available instrument(s)', () => {
+      cy.createCall({
+        ...newCall,
+        proposalWorkflowId: createdWorkflowId,
+      }).then((callResult) => {
+        if (callResult.createCall.id) {
+          cy.createInstrument(instrument3).then((result) => {
+            cy.assignInstrumentToCall({
+              callId: callResult.createCall.id,
+              instrumentFapIds: [{ instrumentId: result.createInstrument.id }],
+            });
+          });
+        }
+      });
+
+      cy.login('user1', initialDBData.roles.user);
+      cy.visit('/');
+      cy.contains('New Proposal').click();
+      cy.get('[data-cy=call-list]').find('li:first-child').click();
+      cy.get('[data-cy=principal-investigator] input').should(
+        'contain.value',
+        'Carl'
+      );
+      cy.finishedLoading();
+      cy.contains('New Proposal').click();
+      cy.get('[data-cy=call-list]').find('li:first-child').click();
+      cy.get('[data-cy=title] input').type(title).should('have.value', title);
+      cy.get('[data-cy=abstract] textarea')
+        .first()
+        .type(abstract)
+        .should('have.value', abstract);
+      cy.get('[data-cy="save-and-continue-button"]').focus().click();
+      cy.finishedLoading();
+      cy.get('[data-natural-key^="instrument_picker"]').click();
+      cy.get('[role="option"]').contains(instrument.name).click();
+      cy.get('[data-cy="save-and-continue-button"]').focus().click();
+      cy.finishedLoading();
+      cy.notification({ variant: 'success', text: 'Saved' });
+      cy.contains('Submit').click();
+      cy.contains('OK').click();
+      cy.contains('Dashboard').click();
+      cy.contains(title);
+      cy.contains('submitted');
+      cy.get('[aria-label="View proposal"]').should('exist');
+      cy.get('[aria-label="Clone proposal"]').first().click();
+      cy.get('[data-cy="call-selection"]').click();
+      cy.get('[data-cy="call-selection-options"]')
+        .contains(newCall.shortCode)
+        .click();
+      cy.get('[data-cy="submit"]').click();
+      cy.finishedLoading();
+      cy.contains(`Copy of ${title}`)
+        .parent()
+        .find('[aria-label="Edit proposal"]')
+        .should('exist')
+        .click();
+      cy.get('[data-cy="save-and-continue-button"]').focus().click();
+      cy.finishedLoading();
+      cy.get('[data-cy="save-and-continue-button"]').focus().click();
+      cy.finishedLoading();
+      cy.get('[data-cy=save-button]').should('be.disabled');
+      cy.get('[data-natural-key^="instrument_picker"]').click();
+      cy.get('[role="option"]').contains(instrument3.name).click();
+      cy.get('[data-cy=save-button]').should('not.be.disabled');
+      cy.get('[data-cy="save-and-continue-button"]').focus().click();
+      cy.finishedLoading();
+      cy.notification({ variant: 'success', text: 'Saved' });
     });
   });
   describe('Proposal PDF generation with instrument picker question', () => {

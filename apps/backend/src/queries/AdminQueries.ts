@@ -7,8 +7,8 @@ import { AdminDataSource } from '../datasources/AdminDataSource';
 import { Authorized } from '../decorators';
 import { Roles } from '../models/Role';
 import { UserWithRole } from '../models/User';
+import { InstitutionsFilter } from '../resolvers/queries/InstitutionsQuery';
 import { getContextKeys } from '../utils/helperFunctions';
-import { InstitutionsFilter } from './../resolvers/queries/InstitutionsQuery';
 
 @injectable()
 export default class AdminQueries {
@@ -18,10 +18,6 @@ export default class AdminQueries {
 
   async getPageText(id: number): Promise<string | null> {
     return await this.dataSource.get(id);
-  }
-
-  async getNationalities() {
-    return await this.dataSource.getNationalities();
   }
 
   async getCountries() {

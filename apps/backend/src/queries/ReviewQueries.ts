@@ -1,26 +1,22 @@
 import { container, inject, injectable } from 'tsyringe';
 
-import { ProposalAuthorization } from '../auth/ProposalAuthorization';
 import { ReviewAuthorization } from '../auth/ReviewAuthorization';
-import { TechnicalReviewAuthorization } from '../auth/TechnicalReviewAuthorization';
+import { UserAuthorization } from '../auth/UserAuthorization';
 import { Tokens } from '../config/Tokens';
 import { ReviewDataSource } from '../datasources/ReviewDataSource';
 import { Authorized } from '../decorators';
 import { Review } from '../models/Review';
 import { Roles } from '../models/Role';
-import { TechnicalReview } from '../models/TechnicalReview';
 import { UserWithRole } from '../models/User';
 import { ReviewsFilter } from '../resolvers/queries/ReviewsQuery';
 
 @injectable()
 export default class ReviewQueries {
   private reviewAuth = container.resolve(ReviewAuthorization);
-  private technicalReviewAuth = container.resolve(TechnicalReviewAuthorization);
 
   constructor(
     @inject(Tokens.ReviewDataSource) public dataSource: ReviewDataSource,
-    @inject(Tokens.ProposalAuthorization)
-    private proposalAuth: ProposalAuthorization
+    @inject(Tokens.UserAuthorization) private userAuth: UserAuthorization
   ) {}
 
   @Authorized()
@@ -33,7 +29,10 @@ export default class ReviewQueries {
       return null;
     }
 
-    if (await this.reviewAuth.hasReadRights(agent, review)) {
+    if (
+      this.userAuth.isApiToken(agent) ||
+      (await this.reviewAuth.hasReadRights(agent, review))
+    ) {
       return review;
     } else {
       return null;
@@ -64,48 +63,11 @@ export default class ReviewQueries {
     const reviews = await this.dataSource.getProposalReviews(proposalPk, fapId);
 
     const permittedReviews = reviews.filter(
-      async (review) => await this.reviewAuth.hasReadRights(agent, review)
+      async (review) =>
+        this.userAuth.isApiToken(agent) ||
+        (await this.reviewAuth.hasReadRights(agent, review))
     );
 
     return permittedReviews;
-  }
-
-  @Authorized()
-  async technicalReviewsForProposal(
-    agent: UserWithRole | null,
-    proposalPk: number
-  ): Promise<TechnicalReview[]> {
-    const technicalReviews =
-      await this.dataSource.getTechnicalReviews(proposalPk);
-
-    if (!technicalReviews) {
-      return [];
-    }
-
-    // NOTE: We only return the tehcnical reviews that the user has rights to see.
-    await Promise.all(
-      technicalReviews.map(async (tehcnicalReview, index) => {
-        const hasReadRights = await this.technicalReviewAuth.hasReadRights(
-          agent,
-          tehcnicalReview
-        );
-
-        if (!hasReadRights) {
-          technicalReviews.splice(index, 1);
-        }
-      })
-    );
-
-    const isReviewerOfProposal = await this.proposalAuth.isReviewerOfProposal(
-      agent,
-      proposalPk
-    );
-    if (isReviewerOfProposal) {
-      technicalReviews.forEach((technicalReview) => {
-        technicalReview.comment = '';
-      });
-    }
-
-    return technicalReviews;
   }
 }

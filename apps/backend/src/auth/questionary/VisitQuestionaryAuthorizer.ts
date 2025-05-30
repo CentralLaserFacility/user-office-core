@@ -4,6 +4,7 @@ import { container, inject, injectable } from 'tsyringe';
 import { Tokens } from '../../config/Tokens';
 import { VisitDataSource } from '../../datasources/VisitDataSource';
 import { UserWithRole } from '../../models/User';
+import { VisitRegistrationStatus } from '../../models/VisitRegistration';
 import { QuestionaryAuthorizer } from '../QuestionaryAuthorization';
 import { UserAuthorization } from '../UserAuthorization';
 import { VisitAuthorization } from '../VisitAuthorization';
@@ -65,12 +66,18 @@ export class VisitQuestionaryAuthorizer implements QuestionaryAuthorizer {
       return false;
     }
 
-    if (registration.isRegistrationSubmitted) {
-      logger.logError('User tried to update visit that is already submitted', {
-        agent,
-        questionaryId,
-        registration,
-      });
+    if (
+      registration.status !== VisitRegistrationStatus.DRAFTED &&
+      registration.status !== VisitRegistrationStatus.CHANGE_REQUESTED
+    ) {
+      logger.logError(
+        `Can not update visit that is in ${registration.status} status`,
+        {
+          agent,
+          questionaryId,
+          registration,
+        }
+      );
 
       return false;
     }

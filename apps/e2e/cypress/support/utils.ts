@@ -41,6 +41,7 @@ export const updatedCall = {
   surveyComment: faker.lorem.word(10),
   templateId: initialDBData.template.id,
   fapReviewTemplateId: initialDBData.fapReviewTemplate.id,
+  technicalReviewTemplateId: initialDBData.technicalReviewTemplate.id,
 };
 
 export const closedCall = {
@@ -60,6 +61,7 @@ export const closedCall = {
   surveyComment: faker.lorem.word(10),
   templateId: initialDBData.template.id,
   fapReviewTemplateId: initialDBData.fapReviewTemplate.id,
+  technicalReviewTemplateId: initialDBData.technicalReviewTemplate.id,
   callFapReviewEnded: false,
 };
 
@@ -203,6 +205,13 @@ const setDatePickerValue = (selector: string, value: string) =>
 const getTinyMceContent = (tinyMceId: string) => {
   cy.get(`#${tinyMceId}`).should('exist');
 
+  cy.window().should('have.property', 'tinymce'); // wait for tinyMCE
+  cy.get(`#${tinyMceId}`).should('exist');
+
+  // NOTE: // wait for editor to be ready
+  // eslint-disable-next-line cypress/no-unnecessary-waiting
+  cy.wait(1000);
+
   return cy.window().then((win) => {
     const editor = getEditorById(win, tinyMceId);
 
@@ -213,7 +222,7 @@ const getTinyMceContent = (tinyMceId: string) => {
 const getIconByCyTag = (cyTag: string) => {
   return cy
     .get('[data-cy=upcoming-experiments]')
-    .contains(initialDBData.scheduledEvents.upcoming.startsAt)
+    .contains(initialDBData.experiments.upcoming.startsAt)
     .closest('TR')
     .find(`[data-cy="${cyTag}"]`);
 };
@@ -222,7 +231,14 @@ const getButtonByIconCyTag = (cyTag: string) =>
 
 const testActionButton = (
   iconCyTag: string,
-  state: 'completed' | 'active' | 'inactive' | 'neutral' | 'invisible'
+  state:
+    | 'completed'
+    | 'active'
+    | 'inactive'
+    | 'neutral'
+    | 'invisible'
+    | 'pending'
+    | 'cancelled'
 ) => {
   switch (state) {
     case 'completed':
@@ -244,6 +260,12 @@ const testActionButton = (
       getButtonByIconCyTag(iconCyTag)
         .find('.MuiBadge-badge')
         .should('not.have.css', 'background-color', 'rgb(235, 26, 108)');
+      break;
+
+    case 'pending':
+      getButtonByIconCyTag(iconCyTag)
+        .find('.MuiBadge-badge')
+        .should('have.css', 'background-color', 'rgb(255, 153, 0)');
       break;
 
     case 'inactive':

@@ -2,7 +2,7 @@ mutation createProposal($callId: Int!) {
   createProposal(callId: $callId) {
     primaryKey
     status {
-      ...proposalStatus
+      ...status
     }
     proposalId
     questionaryId
@@ -27,6 +27,9 @@ mutation createProposal($callId: Int!) {
       questionary {
         isCompleted
       }
+    }
+    coProposerInvites {
+      ...invite
     }
   }
 }

@@ -16,6 +16,8 @@ import { ResolverContext } from '../../context';
 import { ProposalEndStatus } from '../../models/Proposal';
 import { ReviewerFilter, ReviewStatus } from '../../models/Review';
 import { User as UserOrigin } from '../../models/User';
+import { UserExperimentsFilter } from '../queries/ExperimentsQuery';
+import { Experiment } from './Experiment';
 import { Fap } from './Fap';
 import { Instrument } from './Instrument';
 import { Proposal } from './Proposal';
@@ -52,9 +54,6 @@ export class User implements Partial<UserOrigin> {
   @Field()
   public firstname: string;
 
-  @Field(() => String, { nullable: true })
-  public middlename: string | undefined;
-
   @Field()
   public lastname: string;
 
@@ -73,9 +72,6 @@ export class User implements Partial<UserOrigin> {
   @Field()
   public gender: string;
 
-  @Field(() => Int, { nullable: true })
-  public nationality: number;
-
   @Field()
   public birthdate: Date;
 
@@ -93,9 +89,6 @@ export class User implements Partial<UserOrigin> {
 
   @Field()
   public telephone: string;
-
-  @Field(() => String, { nullable: true })
-  public telephone_alt: string | undefined;
 
   @Field()
   public placeholder: boolean;
@@ -163,6 +156,19 @@ export class UserResolver {
     filter: UserProposalsFilter
   ) {
     return context.queries.proposal.dataSource.getUserProposals(
+      user.id,
+      filter
+    );
+  }
+
+  @FieldResolver(() => [Experiment])
+  async experiments(
+    @Root() user: User,
+    @Ctx() context: ResolverContext,
+    @Arg('filter', () => UserExperimentsFilter, { nullable: true })
+    filter: UserExperimentsFilter
+  ) {
+    return context.queries.experiment.dataSource.getUserExperiments(
       user.id,
       filter
     );

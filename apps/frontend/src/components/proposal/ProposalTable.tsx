@@ -28,13 +28,13 @@ import { timeAgo } from 'utils/Time';
 import useDataApiWithFeedback from 'utils/useDataApiWithFeedback';
 import withConfirm, { WithConfirmType } from 'utils/withConfirm';
 
+import AcceptInvite from './AcceptInvite';
 import CallSelectModalOnProposalsClone from './CallSelectModalOnProposalClone';
 import { ProposalStatusDefaultShortCodes } from './ProposalsSharedConstants';
 import {
   PartialProposalsDataType,
   UserProposalDataType,
 } from './ProposalTableUser';
-import RedeemCode from './RedeemCode';
 
 type ProposalTableProps = {
   /** Error flag */
@@ -70,7 +70,11 @@ const columns: Column<PartialProposalsDataType>[] = [
     field: 'call.shortCode',
     emptyValue: '-',
   },
-  { title: 'Created', field: 'created' },
+  {
+    title: 'Created',
+    field: 'created',
+    render: (rawData) => timeAgo(rawData.created),
+  },
 ];
 
 const ProposalTable = ({
@@ -174,7 +178,7 @@ const ProposalTable = ({
         publicStatus: resultProposal.publicStatus,
         submitted: resultProposal.submitted,
         proposalId: resultProposal.proposalId,
-        created: timeAgo(resultProposal.created),
+        created: resultProposal.created,
         notified: resultProposal.notified,
         proposerId: resultProposal.proposer?.id,
         call: resultProposal.call,
@@ -199,7 +203,6 @@ const ProposalTable = ({
           <CallSelectModalOnProposalsClone
             cloneProposalsToCall={cloneProposalsToCall}
             close={(): void => setOpenCallSelection(false)}
-            templateId={proposalToClone?.questionary.templateId}
           />
         </DialogContent>
       </Dialog>
@@ -308,8 +311,8 @@ const ProposalTable = ({
             startIcon={<AddIcon />}
             title="Join proposal"
           >
-            <RedeemCode
-              onRedeemed={() => {
+            <AcceptInvite
+              onAccepted={() => {
                 searchQuery().then((data) => {
                   if (data) {
                     setPartialProposalsData(data.data);

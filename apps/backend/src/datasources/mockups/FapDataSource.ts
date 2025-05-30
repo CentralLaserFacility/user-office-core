@@ -99,7 +99,12 @@ export const dummyFapReview = new Review(
   7,
   0,
   1,
-  1
+  1,
+  new Date('2020-04-20 08:25:12.23043+00'),
+  false,
+  null,
+  false,
+  null
 );
 
 export const dummyFapProposal = new FapProposal(
@@ -215,6 +220,13 @@ export class FapDataSourceMock implements FapDataSource {
     return false;
   }
 
+  async isSecretaryForFapProposal(
+    userId: number,
+    proposalPk: number
+  ): Promise<boolean> {
+    return false;
+  }
+
   async getFapProposal(
     fapId: number,
     proposalPk: number,
@@ -324,8 +336,14 @@ export class FapDataSourceMock implements FapDataSource {
     return { totalCount: dummyFapsCopy.length, faps: dummyFapsCopy };
   }
 
-  async getFapProposals(fapId: number, callId: number | null) {
-    return dummyFapProposals.filter((proposal) => proposal.fapId === fapId);
+  async getFapProposals(filter: {
+    fapId: number;
+    callId?: number | null;
+    instrumentId?: number | null;
+  }) {
+    return dummyFapProposals.filter(
+      (proposal) => proposal.fapId === filter.fapId
+    );
   }
 
   async getFapProposalCount(fapId: number) {
@@ -340,7 +358,7 @@ export class FapDataSourceMock implements FapDataSource {
     return dummyFapProposals.length;
   }
 
-  async getCurrentFapReviewerProposalCount(reviewerId: number) {
+  async getCurrentFapReviewerProposalCount(reviewerId: number, fapId: number) {
     return dummyFapProposals.length;
   }
 
@@ -412,7 +430,12 @@ export class FapDataSourceMock implements FapDataSource {
       return null;
     }
 
-    return { id: 4, shortCode: 'fap_chair', title: 'Fap Chair' };
+    return {
+      id: 4,
+      shortCode: 'fap_chair',
+      title: 'Fap Chair',
+      description: '',
+    };
   }
 
   async assignProposalsToFaps(data: AssignProposalsToFapsInput[]) {
@@ -526,7 +549,7 @@ export class FapDataSourceMock implements FapDataSource {
   }
 
   async setReviewerRank(
-    proposalPk: number,
+    fapReviewId: number,
     reviewer_id: number,
     rank: number
   ): Promise<boolean> {

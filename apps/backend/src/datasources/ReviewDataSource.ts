@@ -45,6 +45,11 @@ export interface ReviewDataSource {
   ): Promise<TechnicalReview | null>;
   // TODO: Maybe this should be called getAllProposalTechnicalReviews
   getTechnicalReviews(proposalPk: number): Promise<TechnicalReview[] | null>;
+  getTechnicalReviewsByFilter(
+    filter?: ReviewsFilter,
+    first?: number,
+    offset?: number
+  ): Promise<{ totalCount: number; technicalReviews: TechnicalReview[] }>;
   getTechnicalReviewById(
     technicalReviewId: number
   ): Promise<TechnicalReview | null>;
@@ -54,4 +59,8 @@ export interface ReviewDataSource {
     fapID: number;
     questionaryID: number;
   }): Promise<Review>;
+  updateInstrumentContact(
+    userId: number,
+    instrumentId: number
+  ): Promise<boolean>;
 }

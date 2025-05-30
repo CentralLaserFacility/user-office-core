@@ -47,7 +47,9 @@ type BasicUserDetailsWithTableData = (BasicUserDetails & {
   tableData?: { checked: boolean };
 })[];
 
-type BasicUserDetailsWithRole = BasicUserDetails & { role?: Maybe<Role> };
+type BasicUserDetailsWithRole = BasicUserDetails & {
+  role?: Maybe<Pick<Role, 'id' | 'shortCode' | 'title'>>;
+};
 
 type PeopleTableProps<T extends BasicUserDetails = BasicUserDetailsWithRole> = {
   selection: boolean;
@@ -429,7 +431,7 @@ const PeopleTable = ({
           }
 
           if (selectedUsers?.includes(userDetails.id)) {
-            setFieldError('email', 'User is already on the proposal');
+            setFieldError('email', 'User has already been added');
 
             return;
           }
